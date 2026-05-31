@@ -1101,12 +1101,13 @@
                         if (!connections[ref.target]) connections[ref.target] = new Set();
                         connections[entity.name].add(ref.target);
                         connections[ref.target].add(entity.name);
-                        const card = ref.target_end_cardinality || '1..n';
-                        let headLabel = 'N', tailLabel = '1';
-                        if (card === '1..1') { headLabel = '1'; tailLabel = '1'; }
-                        else if (card === '0..1') { headLabel = '0..1'; tailLabel = '1'; }
-                        else if (card === '0..n') { headLabel = '0..N'; tailLabel = '0..1'; }
-                        else { headLabel = '1..N'; tailLabel = '1'; }
+                        // A FK reference is many-to-one: the referenced (parent/tail) end uses
+                        // target_end_cardinality, the referencing (child/head) end uses
+                        // source_end_cardinality. Using only target_end_cardinality previously
+                        // rendered every NOT NULL FK as 1:1 instead of N:1.
+                        const fmt = c => ({ '1..1': '1', '0..n': '0..N', '1..n': '1..N' }[c] || c);
+                        const tailLabel = fmt(ref.target_end_cardinality || '1..1');   // parent / referenced end
+                        const headLabel = fmt(ref.source_end_cardinality || '0..n');   // child / referencing end
                         edgeList.push({ from: ref.target, to: entity.name, headLabel, tailLabel, label: ref.name });
                     }
                 });
