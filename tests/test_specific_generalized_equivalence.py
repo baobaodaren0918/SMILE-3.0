@@ -3,7 +3,7 @@ Specific vs Generalized grammar equivalence tests.
 
 The thesis claims: "the Specific and Generalized grammars remain distinct
 at the syntax level while converging to the same internal representation"
-(\\autoref{sec:smile-architecture}, paper/chapter 3.tex:481-484). This file
+(\\autoref{sec:smile-architecture}, paper/chapter 4.tex:481-484). This file
 turns that architectural claim into an empirical one — for every Northwind
 base direction (and the grammar_completeness suite), we run both grammar
 variants through the full pipeline and assert the resulting Meta V2,

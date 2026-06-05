@@ -165,9 +165,10 @@ CAST_CONSTRAINT customers.customer_id TO PARTITION KEY
 -- ============================================
 
 -- ============================================
--- Operation Summary (30 steps, 8 operation types):
+-- Operation Summary (28 steps, 8 operation types):
 --   RENAME_ENTITY:      1    TRANSFORM:          1
 --   ADD_PROPERTY:       8    DELETE_ENTITY:      6
 --   ADD_PARTITION_KEY:  3    ADD_CLUSTERING_KEY: 2
---   CAST_CONSTRAINT:    7    (2 of which DEMOTE NODE_KEY -> CLUSTERING)
+--   CAST_CONSTRAINT:    6    DELETE_PRIMARY_KEY: 1
+--   (1 CAST_CONSTRAINT DEMOTES NODE_KEY -> CLUSTERING)
 -- ============================================
