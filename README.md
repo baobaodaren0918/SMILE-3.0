@@ -1,4 +1,4 @@
-# SMILE - Schema Transformation and Evolution Language
+# SMILE - Schema Migration and Evolution Language
 
 A formally defined DSL for schema migration and evolution between heterogeneous database systems, supporting 4 data models with a full 4×4 migration matrix, three-layer automated validation, and a metamodel integrity check.
 
@@ -74,12 +74,14 @@ print(result['validation_blame'])      # Verdict: ok / smile_script / adapter / 
 ### Run Tests
 ```bash
 python -m pytest tests/ -q
-# 141 tests:
+# 151 tests:
 #   * test_full_flow.py                       — 34 (32 Northwind + 2 grammar-completeness)
-#   * test_parser.py                          — 33 (16 specific + 16 generalized + 1)
-#   * test_negative.py                        — 28+ (graceful-failure surfaces)
-#   * test_nested_paths.py                    — 30 (nested-path resolution)
-#   * test_specific_generalized_equivalence.py — 16 (cross-grammar IR equivalence)
+#   * test_parser.py                          — 34 (specific + generalized)
+#   * test_negative.py                        — 28 (graceful-failure surfaces)
+#   * test_nested_paths.py                    — 28 (nested-path resolution)
+#   * test_specific_generalized_equivalence.py — 17 (cross-grammar IR equivalence)
+#   * test_diff_and_invariants.py              — 5  (diff engine + invariants)
+#   * test_relationship_trace.py               — 5  (FK -> edge cardinality trace)
 
 python -m pytest tests/test_full_flow.py -k r2d -q
 # Run only tests matching a keyword
@@ -144,9 +146,9 @@ SMILE/
 │   ├── generalized/                     # 16 Generalized scripts (.smile_gen)
 │   ├── grammar_completeness/            # source.sql + test_all_unused.smile
 │   │                                    #   (exercises the ops not hit by the matrix)
-│   ├── test_full_flow.py                # 32 Northwind end-to-end migration tests
+│   ├── test_full_flow.py                # 34 end-to-end tests (32 Northwind + 2 grammar-completeness)
 │   ├── test_parser.py                   # 33 parser tests (specific + generalized)
-│   └── test_negative.py                 # 24 graceful-failure tests
+│   └── test_negative.py                 # 28 graceful-failure tests
 │                                        #   (OpParams validation, handler skip
 │                                        #    reasons, malformed scripts, etc.)
 ├── core/                              # SchemaTransformer + pipeline orchestration
@@ -325,7 +327,7 @@ The hub representation (`Schema/unified_meta_schema.py`) that makes cross-model 
 
 ```
 Database
-  └── EntityType (TABLE / DOCUMENT / VERTEX / WIDE_COLUMN_TABLE / EDGE)
+  └── EntityType (TABLE / DOCUMENT / EMBEDDED / VERTEX / EDGE / WIDE_COLUMN_TABLE)
         ├── Property (name, data_type, is_key, is_optional)
         ├── Constraint
         │     ├── UniqueConstraint (PK: simple / partition / clustering)
@@ -445,7 +447,7 @@ ADD_FOREIGN_KEY entity.field REFERENCES target(col)                    -- single
 ADD_FOREIGN_KEY (col1, col2) TO entity REFERENCES target(c1, c2)       -- composite
 ```
 
-The composite form requires the explicit `TO entity` because the parenthesised column list is not dotted. Single-column FKs use the dotted `entity.field` form and need no `TO` clause. Add `WITH CARDINALITY <ZERO|ONE>_TO_<ONE|MANY>` after the `REFERENCES(...)` clause to make the relationship multiplicity explicit.
+The composite form requires the explicit `TO entity` because the parenthesised column list is not dotted. Single-column FKs use the dotted `entity.field` form and need no `TO` clause. Add `WITH CARDINALITY <ZERO|ONE>_TO_<ONE|MANY>` after the `REFERENCES(...)` clause to make the target-end (referenced-side) multiplicity explicit.
 
 ## SMILE Script Examples
 
