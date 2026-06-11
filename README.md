@@ -147,7 +147,7 @@ SMILE/
 │   ├── grammar_completeness/            # source.sql + test_all_unused.smile
 │   │                                    #   (exercises the ops not hit by the matrix)
 │   ├── test_full_flow.py                # 34 end-to-end tests (32 Northwind + 2 grammar-completeness)
-│   ├── test_parser.py                   # 33 parser tests (specific + generalized)
+│   ├── test_parser.py                   # 34 parser tests (specific + generalized)
 │   └── test_negative.py                 # 28 graceful-failure tests
 │                                        #   (OpParams validation, handler skip
 │                                        #    reasons, malformed scripts, etc.)

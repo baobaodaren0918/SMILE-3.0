@@ -1,5 +1,5 @@
 // Neo4j Graph Schema: Northwind V2 (G2G Evolution Target)
-// 8 nodes, 9 relationships
+// 9 nodes, 9 relationships
 // categories MERGED into products, PART_OF deleted
 // customers SPLIT -> customers + contact, HAS_CONTACT added
 // sales_region + territories added, BELONGS_TO + ASSIGNED_TO added
