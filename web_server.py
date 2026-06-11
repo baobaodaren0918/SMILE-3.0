@@ -1092,6 +1092,7 @@ def get_html():
             margin-left: 4px;
         }
         .attr-badge.pk { background: #AF52DE; color: white; }
+        .attr-badge.ck { background: #0066CC; color: white; }
         .attr-badge.optional { background: #E8E8ED; color: #636366; }
 
         .reference-item {

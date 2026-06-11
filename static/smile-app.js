@@ -88,6 +88,17 @@
             return 'PK';
         }
 
+        // Key badge for an entity-card property. Cassandra distinguishes
+        // partition vs clustering keys (both are part of the PRIMARY KEY but
+        // play different roles), so honour the per-property key_type instead of
+        // flattening every key to a generic PK — matching the Chebotko diagram.
+        function keyBadge(attr, dbType) {
+            if (!attr.is_key) return '';
+            if (attr.key_type === 'partition') return '<span class="attr-badge pk">PARTITION</span>';
+            if (attr.key_type === 'clustering') return '<span class="attr-badge ck">CLUSTERING</span>';
+            return '<span class="attr-badge pk">' + getPkLabel(dbType) + '</span>';
+        }
+
         function isDDLType(sourceType) {
             return sourceType === 'Relational' || sourceType === 'Columnar';
         }
@@ -878,7 +889,7 @@
                 case 'DELETE_ENTITY':
                     html = '<span class="param-key">entity:</span> <span class="param-value">' + esc(params.name) + '</span>';
                     break;
-                case 'RENAME':
+                case 'RENAME_PROPERTY':
                     html = '<span class="param-key">rename:</span> <span class="param-value">' + esc(params.old_name) + '</span> → <span class="param-value">' + esc(params.new_name) + '</span>';
                     if (params.entity) html += ' <span class="param-key">in:</span> <span class="param-value">' + esc(params.entity) + '</span>';
                     break;
@@ -940,15 +951,23 @@
                     }
                     if (params.entity) html += ' <span class="param-key">FROM</span> <span class="param-value">' + esc(params.entity) + '</span>';
                     break;
-                case 'ADD_FOREIGN_KEY':
-                    if (params.field_name) {
-                        html = '<span class="param-key">field:</span> <span class="param-value">' + esc(params.field_name) + '</span> ';
-                        html += '<span class="param-key">REFERENCES</span> <span class="param-value">' + esc(params.target_table) + '(' + esc(params.target_column) + ')</span>';
-                    } else {
-                        html = '<span class="param-key">reference:</span> <span class="param-value">' + esc(params.reference) + '</span> → ';
-                        html += '<span class="param-key">target:</span> <span class="param-value">' + esc(params.target) + '</span>';
-                    }
+                case 'ADD_FOREIGN_KEY': {
+                    // Composite-capable: FK params are list-shaped
+                    // (field_names / target_columns). Fall back to the legacy
+                    // singular fields for safety if a caller still sends them.
+                    const fkCols = (params.field_names && params.field_names.length)
+                        ? (params.field_names.length > 1 ? '(' + params.field_names.map(esc).join(', ') + ')' : esc(params.field_names[0]))
+                        : esc(params.field_name);
+                    const tgtCols = (params.target_columns && params.target_columns.length)
+                        ? params.target_columns.map(esc).join(', ')
+                        : esc(params.target_column);
+                    html = '<span class="param-key">field:</span> <span class="param-value">' + fkCols + '</span> ';
+                    if (params.entity) html += '<span class="param-key">TO</span> <span class="param-value">' + esc(params.entity) + '</span> ';
+                    html += '<span class="param-key">REFERENCES</span> <span class="param-value">' + esc(params.target_table) + '(' + tgtCols + ')</span>';
+                    const fkCard = params.clauses && params.clauses.cardinality;
+                    if (fkCard) html += ' <span class="param-key">CARDINALITY</span> <span class="param-value">' + esc(fkCard) + '</span>';
                     break;
+                }
                 case 'DELETE_EMBEDDED':
                     html = '<span class="param-key">embedded:</span> <span class="param-value">' + esc(params.embedded) + '</span>';
                     break;
@@ -980,7 +999,7 @@
                 case 'RENAME_ENTITY':
                     html = '<span class="param-key">rename:</span> <span class="param-value">' + esc(params.old_name) + '</span> → <span class="param-value">' + esc(params.new_name) + '</span>';
                     break;
-                case 'COPY':
+                case 'COPY_PROPERTY':
                     html = '<span class="param-value">' + esc(params.source) + '</span>';
                     html += ' <span class="param-key">TO</span> <span class="param-value">' + esc(params.target) + '</span>';
                     break;
@@ -988,7 +1007,7 @@
                     html = '<span class="param-key">entity:</span> <span class="param-value">' + esc(params.source) + '</span>';
                     html += ' <span class="param-key">AS</span> <span class="param-value">' + esc(params.target) + '</span>';
                     break;
-                case 'MOVE':
+                case 'MOVE_PROPERTY':
                     html = '<span class="param-value">' + esc(params.source) + '</span>';
                     html += ' <span class="param-key">TO</span> <span class="param-value">' + esc(params.target) + '</span>';
                     break;
@@ -998,9 +1017,13 @@
                     html += ' <span class="param-key">INTO</span> <span class="param-value">' + esc(params.target) + '</span>';
                     if (params.alias) html += ' <span class="param-key">AS</span> <span class="param-value">' + esc(params.alias) + '</span>';
                     break;
-                case 'CAST':
+                case 'CAST_PROPERTY':
                     html = '<span class="param-key">target:</span> <span class="param-value">' + esc(params.target) + '</span>';
                     html += ' <span class="param-key">TO</span> <span class="param-value">' + esc(params.type || params.data_type) + '</span>';
+                    break;
+                case 'CAST_ENTITY':
+                    html = '<span class="param-key">entity:</span> <span class="param-value">' + esc(params.target) + '</span>';
+                    html += ' <span class="param-key">TO</span> <span class="param-value">' + esc(params.entity_kind) + '</span>';
                     break;
                 case 'CAST_CONSTRAINT':
                     html = '<span class="param-key">target:</span> <span class="param-value">' + esc(params.target) + '</span>';
@@ -1660,7 +1683,7 @@
                     }
                 }
                 html += '</span>';
-                if (a.is_key) html += '<span class="attr-badge pk">' + getPkLabel(isSource ? migrationData.source_type : migrationData.target_type) + '</span>';
+                if (a.is_key) html += keyBadge(a, isSource ? migrationData.source_type : migrationData.target_type);
                 if (a.is_optional) html += '<span class="attr-badge optional">?</span>';
                 html += '</div>';
             });
@@ -1698,7 +1721,7 @@
                         result += '<div class="property' + levelClass + '">';
                         result += '<span class="attr-name">' + a.name + '</span>';
                         result += '<span class="attr-type">' + a.type + '</span>';
-                        if (a.is_key) result += '<span class="attr-badge pk">' + getPkLabel(migrationData.source_type) + '</span>';
+                        if (a.is_key) result += keyBadge(a, migrationData.source_type);
                         if (a.is_fk) result += '<span class="attr-badge fk">FK</span>';
                         result += '</div>';
                     }
