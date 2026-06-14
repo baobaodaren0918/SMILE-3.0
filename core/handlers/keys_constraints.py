@@ -806,11 +806,12 @@ class KeysConstraintsHandlersMixin:
             return OperationResult.skipped("add_label: precondition not met")
 
         if entity.entity_kind == EntityKind.EDGE:
-            logger.warning(
-                "ADD_LABEL on edge '%s': label '%s' not exported, since Neo4j "
-                "relationships carry a single type.",
-                entity_name, label,
+            reason = (
+                f"add_label: edge '{entity_name}' cannot take an extra label "
+                f"'{label}', since Neo4j relationships carry a single type"
             )
+            logger.warning("%s", reason)
+            return OperationResult.skipped(reason)
 
         if label not in entity.labels:
             entity.labels.append(label)
