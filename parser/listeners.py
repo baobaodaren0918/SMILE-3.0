@@ -111,20 +111,41 @@ class BaseSMILEListener:
     # ========== Helper methods for parsing clauses ==========
 
     def _parse_condition_pairs(self, condition_ctx):
-        """Recursively parse condition tree into list of (left = right) join pairs."""
-        pairs = []
-        # Leaf: qualifiedName EQUALS qualifiedName
-        qns = condition_ctx.qualifiedName()
-        if qns and len(qns) == 2:
-            pairs.append({
+        """Recursively parse a condition tree into a list of typed join entries.
+
+        Equality leaf  (a = b)         -> {"type": "eq",   "left", "right"}
+        Edge leaf      (a -[:REL]-> b) -> {"type": "edge",  "from", "rel", "to"}
+        AND / (cond)                   -> recurse and concatenate.
+        ``None`` (no WHERE present) -> [].
+        """
+        if condition_ctx is None:
+            return []
+
+        # Equality leaf: qualifiedName EQUALS qualifiedName
+        eq = condition_ctx.equalityCondition() if hasattr(condition_ctx, "equalityCondition") else None
+        if eq is not None:
+            qns = eq.qualifiedName()
+            return [{
+                "type": "eq",
                 "left": qns[0].getText(),
-                "right": qns[1].getText()
-            })
+                "right": qns[1].getText(),
+            }]
+
+        # Edge leaf: qualifiedName -[:REL]-> qualifiedName  (graph relationship join)
+        edge = condition_ctx.edgeCondition() if hasattr(condition_ctx, "edgeCondition") else None
+        if edge is not None:
+            qns = edge.qualifiedName()
+            return [{
+                "type": "edge",
+                "from": qns[0].getText(),
+                "rel": edge.identifier().getText(),
+                "to": qns[1].getText(),
+            }]
+
         # Recursive: condition AND condition  /  (condition)
-        sub_conditions = condition_ctx.condition()
-        if sub_conditions:
-            for sub in sub_conditions:
-                pairs.extend(self._parse_condition_pairs(sub))
+        pairs = []
+        for sub in (condition_ctx.condition() or []):
+            pairs.extend(self._parse_condition_pairs(sub))
         return pairs
 
     def _parse_property_clauses(self, clause_list):
@@ -454,8 +475,9 @@ class SMILESpecificListener(SMILE_SpecificListener, BaseSMILEListener):
 
         # Parse WHERE condition(s): supports single or AND-chained conditions
         join_conditions = self._parse_condition_pairs(ctx.condition())
-        source_fk = join_conditions[0]["left"] if join_conditions else ""
-        target_pk = join_conditions[0]["right"] if join_conditions else ""
+        first_eq = next((c for c in join_conditions if c.get("type") == "eq"), None)
+        source_fk = first_eq["left"] if first_eq else ""
+        target_pk = first_eq["right"] if first_eq else ""
 
         # Parse target location: customers.address -> target_entity=customers, embedded_name=address
         target_parts = target_location.split(".")
@@ -768,6 +790,7 @@ class SMILESpecificListener(SMILE_SpecificListener, BaseSMILEListener):
         self.operations.append(Operation(OpType.COPY_PROPERTY, CopyPropertyParams(
             source=f"{source_entity}.{property_name}",
             target=f"{target_entity}.{property_name}",
+            join_conditions=self._parse_condition_pairs(ctx.condition()),
         ), original_keyword="COPY_PROPERTY"))
 
     def enterCopy_entity(self, ctx):
@@ -791,17 +814,21 @@ class SMILESpecificListener(SMILE_SpecificListener, BaseSMILEListener):
         self.operations.append(Operation(OpType.MOVE_PROPERTY, MovePropertyParams(
             source=f"{source_entity}.{property_name}",
             target=f"{target_entity}.{property_name}",
+            join_conditions=self._parse_condition_pairs(ctx.condition()),
         ), original_keyword="MOVE_PROPERTY"))
 
     def enterMerge(self, ctx):
         # Rule: MERGE qualifiedName COMMA qualifiedName INTO identifier (AS identifier)?
         qns = ctx.qualifiedName()
         ids = ctx.identifier()
+        if len(qns) < 2 or not ids:
+            return  # malformed MERGE (e.g. missing required WHERE); syntax error already reported
         self.operations.append(Operation(OpType.MERGE, MergeParams(
             source1=qns[0].getText(),
             source2=qns[1].getText(),
             target=ids[0].getText(),
             alias=ids[1].getText() if len(ids) > 1 else None,
+            join_conditions=self._parse_condition_pairs(ctx.condition()),
         ), original_keyword="MERGE"))
 
     def enterSplit(self, ctx):
@@ -975,8 +1002,9 @@ class SMILEGeneralizedListener(SMILE_GeneralizedListener, BaseSMILEListener):
 
         # Parse WHERE condition(s): supports single or AND-chained conditions
         join_conditions = self._parse_condition_pairs(ctx.condition())
-        source_fk = join_conditions[0]["left"] if join_conditions else ""
-        target_pk = join_conditions[0]["right"] if join_conditions else ""
+        first_eq = next((c for c in join_conditions if c.get("type") == "eq"), None)
+        source_fk = first_eq["left"] if first_eq else ""
+        target_pk = first_eq["right"] if first_eq else ""
 
         # Parse target location: customers.address -> target_entity=customers, embedded_name=address
         target_parts = target_location.split(".")
@@ -1208,6 +1236,7 @@ class SMILEGeneralizedListener(SMILE_GeneralizedListener, BaseSMILEListener):
             self.operations.append(Operation(OpType.COPY_PROPERTY, CopyPropertyParams(
                 source=f"{source_entity}.{property_name}",
                 target=f"{target_entity}.{property_name}",
+                join_conditions=self._parse_condition_pairs(pc.condition()),
             ), original_keyword="COPY PROPERTY"))
 
     def enterMove_gen(self, ctx):
@@ -1219,17 +1248,21 @@ class SMILEGeneralizedListener(SMILE_GeneralizedListener, BaseSMILEListener):
         self.operations.append(Operation(OpType.MOVE_PROPERTY, MovePropertyParams(
             source=f"{source_entity}.{property_name}",
             target=f"{target_entity}.{property_name}",
+            join_conditions=self._parse_condition_pairs(ctx.condition()),
         ), original_keyword="MOVE PROPERTY"))
 
     def enterMerge_gen(self, ctx):
         # Rule: MERGE qualifiedName COMMA qualifiedName INTO identifier (AS identifier)?
         qns = ctx.qualifiedName()
         ids = ctx.identifier()
+        if len(qns) < 2 or not ids:
+            return  # malformed MERGE (e.g. missing required WHERE); syntax error already reported
         self.operations.append(Operation(OpType.MERGE, MergeParams(
             source1=qns[0].getText(),
             source2=qns[1].getText(),
             target=ids[0].getText(),
             alias=ids[1].getText() if len(ids) > 1 else None,
+            join_conditions=self._parse_condition_pairs(ctx.condition()),
         ), original_keyword="MERGE"))
 
     def enterSplit_gen(self, ctx):

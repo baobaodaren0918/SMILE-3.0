@@ -606,7 +606,7 @@
             // paradigm). Renders PASS/FAIL/SKIP like Layers 1/2 but the FAIL
             // body is a unified-diff <pre> block instead of structured
             // entity diffs (the comparison is text-level by definition).
-            var label = 'Layer 3 — Text Style Alignment';
+            var label = 'Layer 3 — Text-Level Validation';
             if (!v || v.passed == null) {
                 var summaryText = (v && v.summary) ? v.summary : 'Other reasons';
                 return '<div class="validation-layer">' +
@@ -875,6 +875,16 @@
             if (!params) return '';
             // Helper: escape HTML to prevent XSS and handle null/undefined
             function esc(v) { return escapeHtml(String(v != null ? v : '')); }
+            // Helper: render a WHERE join condition (eq: a = b; edge: a -[:REL]-> b)
+            function fmtJoinWhere(jcs) {
+                if (!jcs || !jcs.length) return '';
+                const parts = jcs.map(function(c) {
+                    return c && c.type === 'edge'
+                        ? esc(c.from) + ' -[:' + esc(c.rel) + ']-> ' + esc(c.to)
+                        : esc(c.left) + ' = ' + esc(c.right);
+                });
+                return ' <span class="param-key">WHERE</span> <span class="param-value">' + parts.join(' AND ') + '</span>';
+            }
             let html = '';
 
             switch(type) {
@@ -1002,6 +1012,7 @@
                 case 'COPY_PROPERTY':
                     html = '<span class="param-value">' + esc(params.source) + '</span>';
                     html += ' <span class="param-key">TO</span> <span class="param-value">' + esc(params.target) + '</span>';
+                    html += fmtJoinWhere(params.join_conditions);
                     break;
                 case 'COPY_ENTITY':
                     html = '<span class="param-key">entity:</span> <span class="param-value">' + esc(params.source) + '</span>';
@@ -1010,10 +1021,12 @@
                 case 'MOVE_PROPERTY':
                     html = '<span class="param-value">' + esc(params.source) + '</span>';
                     html += ' <span class="param-key">TO</span> <span class="param-value">' + esc(params.target) + '</span>';
+                    html += fmtJoinWhere(params.join_conditions);
                     break;
                 case 'MERGE':
                     html = '<span class="param-value">' + esc(params.source1) + '</span>, ';
                     html += '<span class="param-value">' + esc(params.source2) + '</span>';
+                    html += fmtJoinWhere(params.join_conditions);
                     html += ' <span class="param-key">INTO</span> <span class="param-value">' + esc(params.target) + '</span>';
                     if (params.alias) html += ' <span class="param-key">AS</span> <span class="param-value">' + esc(params.alias) + '</span>';
                     break;

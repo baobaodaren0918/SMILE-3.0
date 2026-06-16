@@ -1,4 +1,4 @@
-# Generated from grammar/specific/SMILE_Specific.g4 by ANTLR 4.13.1
+# Generated from SMILE_Specific.g4 by ANTLR 4.13.2
 from antlr4 import *
 if "." in __name__:
     from .SMILE_SpecificParser import SMILE_SpecificParser
@@ -896,6 +896,24 @@ class SMILE_SpecificListener(ParseTreeListener):
 
     # Exit a parse tree produced by SMILE_SpecificParser#condition.
     def exitCondition(self, ctx:SMILE_SpecificParser.ConditionContext):
+        pass
+
+
+    # Enter a parse tree produced by SMILE_SpecificParser#equalityCondition.
+    def enterEqualityCondition(self, ctx:SMILE_SpecificParser.EqualityConditionContext):
+        pass
+
+    # Exit a parse tree produced by SMILE_SpecificParser#equalityCondition.
+    def exitEqualityCondition(self, ctx:SMILE_SpecificParser.EqualityConditionContext):
+        pass
+
+
+    # Enter a parse tree produced by SMILE_SpecificParser#edgeCondition.
+    def enterEdgeCondition(self, ctx:SMILE_SpecificParser.EdgeConditionContext):
+        pass
+
+    # Exit a parse tree produced by SMILE_SpecificParser#edgeCondition.
+    def exitEdgeCondition(self, ctx:SMILE_SpecificParser.EdgeConditionContext):
         pass
 
 

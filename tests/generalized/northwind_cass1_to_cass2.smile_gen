@@ -30,10 +30,9 @@ USING adapted_northwind_schema VERSION 1 TO 2
 -- ============================================
 DELETE PARTITION KEY (category_id, supplier_id) FROM products
 DELETE CLUSTERING KEY product_id FROM products
-DELETE PROPERTY products.category_id
 DELETE PARTITION KEY category_id FROM categories
-DELETE PROPERTY categories.category_id
-MERGE categories, products INTO products
+MERGE categories, products WHERE products.category_id = categories.category_id INTO products
+DELETE PROPERTY products.category_id
 ADD PARTITION KEY product_id TO products
 
 -- ============================================

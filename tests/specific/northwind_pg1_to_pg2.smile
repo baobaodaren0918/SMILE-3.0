@@ -31,10 +31,9 @@ USING adapted_northwind_schema VERSION 1 TO 2
 --         products(..., category_id [FK->categories])
 -- After:  products(..., category_name, description) -- categories removed
 DELETE_FOREIGN_KEY products.category_id
-DELETE_PROPERTY products.category_id
 DELETE_PRIMARY_KEY category_id FROM categories
-DELETE_PROPERTY categories.category_id
-MERGE categories, products INTO products
+MERGE categories, products WHERE products.category_id = categories.category_id INTO products
+DELETE_PROPERTY products.category_id
 
 -- ============================================
 -- Phase 2: SPLIT customers -> customers + customer_contacts (structural)

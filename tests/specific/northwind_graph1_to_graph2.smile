@@ -38,7 +38,7 @@ USING adapted_northwind_schema VERSION 1 TO 2
 -- After:  products { ..., category_name, description }
 DELETE_ENTITY PART_OF
 DELETE_PROPERTY categories.category_id
-MERGE categories, products INTO products
+MERGE categories, products WHERE products -[:PART_OF]-> categories INTO products
 
 -- ============================================
 -- Phase 2: SPLIT customers -> customers + contact (structural)

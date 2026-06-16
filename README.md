@@ -483,10 +483,9 @@ USING adapted_northwind_schema VERSION 1 TO 2
 
 -- Denormalize: merge categories into products
 DELETE_FOREIGN_KEY products.category_id
-DELETE_PROPERTY products.category_id
 DELETE_PRIMARY_KEY category_id FROM categories
-DELETE_PROPERTY categories.category_id
-MERGE categories, products INTO products
+MERGE categories, products WHERE products.category_id = categories.category_id INTO products
+DELETE_PROPERTY products.category_id
 
 -- Vertical partition: split customer contacts
 SPLIT customers INTO customers:customer_id, company_name, street, city, region,

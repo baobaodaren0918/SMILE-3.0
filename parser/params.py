@@ -191,6 +191,7 @@ class RenamePropertyParams:
 class CopyPropertyParams:
     source: str
     target: str
+    join_conditions: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         _require_nonempty(self, "source", "target")
@@ -200,6 +201,7 @@ class CopyPropertyParams:
 class MovePropertyParams:
     source: str
     target: str
+    join_conditions: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         _require_nonempty(self, "source", "target")
@@ -392,6 +394,7 @@ class MergeParams:
     source2: str
     target: str
     alias: Optional[str] = None
+    join_conditions: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         _require_nonempty(self, "source1", "source2", "target")

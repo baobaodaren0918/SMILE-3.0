@@ -242,3 +242,29 @@ class SchemaTransformerBase:
             return (None, "")
         entity = self._get_entity(entity_name, op_name)
         return (entity, attr_name)
+
+    def _validate_join_conditions(self, join_conditions, operand_entities, op_name):
+        """Validate a WHERE join condition for a cross-entity operation.
+
+        Returns a skip reason string if a side references an entity outside the
+        operation's own operands (a likely typo); otherwise ``None``. The
+        condition is recorded for traceability and does not change schema
+        output. Edge conditions are checked at entity level only, since the
+        named relationship may already have been removed by an earlier step."""
+        operand_entities = [e for e in operand_entities if e]
+
+        def _belongs(path: str) -> bool:
+            return any(path == e or path.startswith(e + ".") for e in operand_entities)
+
+        for jc in (join_conditions or []):
+            if jc.get("type") == "edge":
+                if not jc.get("rel"):
+                    return f"{op_name}: edge join condition is missing a relationship type"
+                sides = [jc.get("from", ""), jc.get("to", "")]
+            else:
+                sides = [jc.get("left", ""), jc.get("right", "")]
+            for s in sides:
+                if s and not _belongs(s):
+                    return (f"{op_name}: WHERE references '{s}', which is not part of "
+                            f"this operation's entities {operand_entities}")
+        return None

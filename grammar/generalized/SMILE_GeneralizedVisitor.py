@@ -1,4 +1,4 @@
-# Generated from grammar/generalized/SMILE_Generalized.g4 by ANTLR 4.13.1
+# Generated from SMILE_Generalized.g4 by ANTLR 4.13.2
 from antlr4 import *
 if "." in __name__:
     from .SMILE_GeneralizedParser import SMILE_GeneralizedParser
@@ -501,6 +501,16 @@ class SMILE_GeneralizedVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by SMILE_GeneralizedParser#condition.
     def visitCondition(self, ctx:SMILE_GeneralizedParser.ConditionContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by SMILE_GeneralizedParser#equalityCondition.
+    def visitEqualityCondition(self, ctx:SMILE_GeneralizedParser.EqualityConditionContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by SMILE_GeneralizedParser#edgeCondition.
+    def visitEdgeCondition(self, ctx:SMILE_GeneralizedParser.EdgeConditionContext):
         return self.visitChildren(ctx)
 
 

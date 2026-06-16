@@ -1,4 +1,4 @@
-# Generated from grammar/generalized/SMILE_Generalized.g4 by ANTLR 4.13.1
+# Generated from SMILE_Generalized.g4 by ANTLR 4.13.2
 from antlr4 import *
 if "." in __name__:
     from .SMILE_GeneralizedParser import SMILE_GeneralizedParser
@@ -896,6 +896,24 @@ class SMILE_GeneralizedListener(ParseTreeListener):
 
     # Exit a parse tree produced by SMILE_GeneralizedParser#condition.
     def exitCondition(self, ctx:SMILE_GeneralizedParser.ConditionContext):
+        pass
+
+
+    # Enter a parse tree produced by SMILE_GeneralizedParser#equalityCondition.
+    def enterEqualityCondition(self, ctx:SMILE_GeneralizedParser.EqualityConditionContext):
+        pass
+
+    # Exit a parse tree produced by SMILE_GeneralizedParser#equalityCondition.
+    def exitEqualityCondition(self, ctx:SMILE_GeneralizedParser.EqualityConditionContext):
+        pass
+
+
+    # Enter a parse tree produced by SMILE_GeneralizedParser#edgeCondition.
+    def enterEdgeCondition(self, ctx:SMILE_GeneralizedParser.EdgeConditionContext):
+        pass
+
+    # Exit a parse tree produced by SMILE_GeneralizedParser#edgeCondition.
+    def exitEdgeCondition(self, ctx:SMILE_GeneralizedParser.EdgeConditionContext):
         pass
 
 

@@ -28,10 +28,9 @@ USING adapted_northwind_schema VERSION 1 TO 2
 -- Business: Eliminate JOIN for product catalog queries
 -- ============================================
 DELETE FOREIGN KEY products.category_id
-DELETE PROPERTY products.category_id
 DELETE PRIMARY KEY category_id FROM categories
-DELETE PROPERTY categories.category_id
-MERGE categories, products INTO products
+MERGE categories, products WHERE products.category_id = categories.category_id INTO products
+DELETE PROPERTY products.category_id
 
 -- ============================================
 -- Phase 2: SPLIT customers -> customers + customer_contacts (structural)

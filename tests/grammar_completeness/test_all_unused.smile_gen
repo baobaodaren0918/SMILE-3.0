@@ -16,10 +16,10 @@ ADD UNIQUE KEY customers.email
 DELETE UNIQUE KEY email FROM customers
 
 -- [3 → COPY PROPERTY]
-COPY PROPERTY email FROM customers TO orders
+COPY PROPERTY email FROM customers TO orders WHERE orders.customer_id = customers.id
 
 -- [4 → MOVE PROPERTY]
-MOVE PROPERTY sku FROM products TO customers
+MOVE PROPERTY sku FROM products TO customers WHERE products.id = customers.id
 
 -- [5 → COPY ENTITY]
 COPY ENTITY customers AS customers_archive

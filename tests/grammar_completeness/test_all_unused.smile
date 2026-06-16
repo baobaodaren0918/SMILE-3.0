@@ -16,10 +16,10 @@ ADD_UNIQUE_KEY customers.email
 DELETE_UNIQUE_KEY email FROM customers
 
 -- [3 → COPY_PROPERTY] duplicate customers.email onto orders (orders gains an "email" column)
-COPY_PROPERTY email FROM customers TO orders
+COPY_PROPERTY email FROM customers TO orders WHERE orders.customer_id = customers.id
 
 -- [4 → MOVE_PROPERTY] take products.sku and re-home it on customers
-MOVE_PROPERTY sku FROM products TO customers
+MOVE_PROPERTY sku FROM products TO customers WHERE products.id = customers.id
 
 -- [5 → COPY_ENTITY] duplicate customers as customers_archive (full schema copy)
 COPY_ENTITY customers AS customers_archive

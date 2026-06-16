@@ -32,10 +32,9 @@ USING adapted_northwind_schema VERSION 1 TO 2
 -- After:  products PK((product_id)) with category_name, description added
 DELETE_PARTITION_KEY (category_id, supplier_id) FROM products
 DELETE_CLUSTERING_KEY product_id FROM products
-DELETE_PROPERTY products.category_id
 DELETE_PARTITION_KEY category_id FROM categories
-DELETE_PROPERTY categories.category_id
-MERGE categories, products INTO products
+MERGE categories, products WHERE products.category_id = categories.category_id INTO products
+DELETE_PROPERTY products.category_id
 ADD_PARTITION_KEY product_id TO products
 
 -- ============================================

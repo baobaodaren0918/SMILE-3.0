@@ -262,8 +262,8 @@ nest: NEST qualifiedName COLON unnestFieldList IN qualifiedName WHERE condition;
 // ============================================================================
 
 // COPY_PROPERTY: Duplicate a property to another entity (keeps original)
-// Example: COPY_PROPERTY name FROM customers TO other
-copy_property: COPY_PROPERTY identifier FROM qualifiedName TO qualifiedName;
+// Example: COPY_PROPERTY name FROM customers TO other WHERE other.customer_id = customers.id
+copy_property: COPY_PROPERTY identifier FROM qualifiedName TO qualifiedName WHERE condition;
 
 // COPY_ENTITY: Duplicate an entire entity with all its structure (properties, keys, constraints)
 // Reference: PRISM "COPY TABLE R INTO S", CoDEL "Addtable(S, R)"
@@ -272,12 +272,12 @@ copy_property: COPY_PROPERTY identifier FROM qualifiedName TO qualifiedName;
 copy_entity: COPY_ENTITY qualifiedName AS identifier (FROM qualifiedName TO qualifiedName)?;
 
 // MOVE_PROPERTY: Relocate a property to another entity (removes original)
-// Example: MOVE_PROPERTY name FROM customers TO other
-move_property: MOVE_PROPERTY identifier FROM qualifiedName TO qualifiedName;
+// Example: MOVE_PROPERTY name FROM customers TO other WHERE other.customer_id = customers.id
+move_property: MOVE_PROPERTY identifier FROM qualifiedName TO qualifiedName WHERE condition;
 
 // MERGE: Combine two entities into one new entity
-// Example: MERGE A, B INTO C AS alias
-merge: MERGE qualifiedName COMMA qualifiedName INTO identifier (AS identifier)?;
+// Example: MERGE A, B WHERE A.id = B.id INTO C AS alias
+merge: MERGE qualifiedName COMMA qualifiedName WHERE condition INTO identifier (AS identifier)?;
 
 // SPLIT: Divide one entity into multiple separate entities (vertical partitioning)
 // Reference: AC - "SPLIT Person into Person:id, firstname, lastname AND knows:id, knows"
@@ -415,9 +415,15 @@ pathSegment: identifier (LBRACKET RBRACKET)?;
 identifier: IDENTIFIER;
 
 // Condition (simplified for schema migration)
-condition: qualifiedName EQUALS qualifiedName
+// Two leaf forms: property equality (a = b) for relational/document/columnar,
+// and an edge join (a -[:REL]-> b) for graph, where the correspondence is a
+// relationship rather than a shared key.
+condition: equalityCondition
+         | edgeCondition
          | condition AND condition
          | LPAREN condition RPAREN;
+equalityCondition: qualifiedName EQUALS qualifiedName;
+edgeCondition: qualifiedName EDGE_LEFT identifier EDGE_RIGHT qualifiedName;
 
 // Literals
 literal: STRING_LITERAL | INTEGER_LITERAL | DECIMAL_LITERAL | TRUE | FALSE | NULL;
@@ -525,6 +531,7 @@ CHECK: 'CHECK';
 TRUE: 'true' | 'TRUE'; FALSE: 'false' | 'FALSE'; NULL: 'null' | 'NULL';
 
 // Symbols
+EDGE_LEFT: '-[:'; EDGE_RIGHT: ']->';
 COLON: ':'; SEMICOLON: ';'; COMMA: ','; DOT: '.'; LPAREN: '('; RPAREN: ')'; LBRACKET: '['; RBRACKET: ']';
 LBRACE: '{'; RBRACE: '}';
 EQUALS: '=';

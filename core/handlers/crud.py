@@ -382,6 +382,14 @@ class CRUDHandlersMixin:
         source_path = params.source
         target_path = params.target
 
+        reason = self._validate_join_conditions(
+            params.join_conditions,
+            [self._split_path(source_path)[0], self._split_path(target_path)[0]],
+            "copy_property")
+        if reason:
+            logger.warning("%s", reason)
+            return OperationResult.skipped(reason)
+
         src_entity, src_attr_name = self._resolve_entity_attr(source_path)
         tgt_entity, tgt_attr_name = self._resolve_entity_attr(target_path)
 
@@ -478,6 +486,14 @@ class CRUDHandlersMixin:
         """MOVE_PROPERTY: Move property from one entity to another."""
         source_path = params.source
         target_path = params.target
+
+        reason = self._validate_join_conditions(
+            params.join_conditions,
+            [self._split_path(source_path)[0], self._split_path(target_path)[0]],
+            "move_property")
+        if reason:
+            logger.warning("%s", reason)
+            return OperationResult.skipped(reason)
 
         src_entity, src_attr_name = self._resolve_entity_attr(source_path)
         tgt_entity, tgt_attr_name = self._resolve_entity_attr(target_path)

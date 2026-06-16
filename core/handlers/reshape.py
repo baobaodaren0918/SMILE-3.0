@@ -81,6 +81,15 @@ class ReshapeHandlersMixin:
             logger.error(f"MERGE failed: entity '{source2_name}' is an EDGE entity, MERGE does not support EDGE")
             return OperationResult.skipped("merge: precondition not met")
 
+        # The WHERE clause states how the two entities correspond. Validate that
+        # it references only the two merge operands; the condition itself does
+        # not change how properties are combined.
+        reason = self._validate_join_conditions(
+            params.join_conditions, [source1_name, source2_name], "merge")
+        if reason:
+            logger.warning("%s", reason)
+            return OperationResult.skipped(reason)
+
         # Snapshot the UniqueProperty meta_ids of both sources before any
         # mutation, paired with their property names. After we build the
         # merged entity and refresh its IDs (below), we walk every FK in the

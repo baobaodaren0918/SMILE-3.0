@@ -89,7 +89,7 @@ class TestParsePathForms:
 
     def test_merge_specific_accepts_dotted_sources(self):
         op = _parse_one(HEADER_EVO +
-                        "MERGE orders.shipper, orders.employee INTO contact\n")
+                        "MERGE orders.shipper, orders.employee WHERE orders.shipper.id = orders.employee.id INTO contact\n")
         assert op.op_type == OpType.MERGE
         assert op.params.source1 == "orders.shipper"
         assert op.params.source2 == "orders.employee"
@@ -141,7 +141,7 @@ class TestParsePathForms:
 
     def test_copy_property_specific_accepts_dotted_entities(self):
         op = _parse_one(HEADER_EVO +
-                        "COPY_PROPERTY phone FROM orders.customer TO orders.shipper\n")
+                        "COPY_PROPERTY phone FROM orders.customer TO orders.shipper WHERE orders.customer.id = orders.shipper.id\n")
         assert op.op_type == OpType.COPY_PROPERTY
         # Listener composes "{entity}.{property}" — orders.customer.phone form
         assert op.params.source == "orders.customer.phone"
@@ -149,7 +149,7 @@ class TestParsePathForms:
 
     def test_move_property_specific_accepts_dotted_entities(self):
         op = _parse_one(HEADER_EVO +
-                        "MOVE_PROPERTY phone FROM orders.customer TO orders.shipper\n")
+                        "MOVE_PROPERTY phone FROM orders.customer TO orders.shipper WHERE orders.customer.id = orders.shipper.id\n")
         assert op.op_type == OpType.MOVE_PROPERTY
         assert op.params.source == "orders.customer.phone"
         assert op.params.target == "orders.shipper.phone"

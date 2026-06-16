@@ -435,12 +435,12 @@
       "specific": "COPY_PROPERTY",
       "generalized": "COPY PROPERTY",
       "doc": "Duplicate a property from one entity to another (keeps the original)",
-      "syntax_specific": "COPY_PROPERTY <name> FROM <src_entity> TO <dst_entity>",
-      "syntax_generalized": "COPY PROPERTY <name> FROM <src_entity> TO <dst_entity>",
-      "snippet_specific": "COPY_PROPERTY ${1:property} FROM ${2:src} TO ${3:dst}$0",
-      "snippet_generalized": "COPY PROPERTY ${1:property} FROM ${2:src} TO ${3:dst}$0",
-      "template_specific": "COPY_PROPERTY {name} FROM {src} TO {dst}",
-      "template_generalized": "COPY PROPERTY {name} FROM {src} TO {dst}"
+      "syntax_specific": "COPY_PROPERTY <name> FROM <src_entity> TO <dst_entity> WHERE <condition>",
+      "syntax_generalized": "COPY PROPERTY <name> FROM <src_entity> TO <dst_entity> WHERE <condition>",
+      "snippet_specific": "COPY_PROPERTY ${1:property} FROM ${2:src} TO ${3:dst} WHERE ${4:src.id = dst.id}$0",
+      "snippet_generalized": "COPY PROPERTY ${1:property} FROM ${2:src} TO ${3:dst} WHERE ${4:src.id = dst.id}$0",
+      "template_specific": "COPY_PROPERTY {name} FROM {src} TO {dst} WHERE {cond}",
+      "template_generalized": "COPY PROPERTY {name} FROM {src} TO {dst} WHERE {cond}"
     },
 
     "COPY_ENTITY": {
@@ -461,12 +461,12 @@
       "specific": "MOVE_PROPERTY",
       "generalized": "MOVE PROPERTY",
       "doc": "Relocate a property to another entity (removes the original)",
-      "syntax_specific": "MOVE_PROPERTY <name> FROM <src> TO <dst>",
-      "syntax_generalized": "MOVE PROPERTY <name> FROM <src> TO <dst>",
-      "snippet_specific": "MOVE_PROPERTY ${1:property} FROM ${2:src} TO ${3:dst}$0",
-      "snippet_generalized": "MOVE PROPERTY ${1:property} FROM ${2:src} TO ${3:dst}$0",
-      "template_specific": "MOVE_PROPERTY {name} FROM {src} TO {dst}",
-      "template_generalized": "MOVE PROPERTY {name} FROM {src} TO {dst}"
+      "syntax_specific": "MOVE_PROPERTY <name> FROM <src> TO <dst> WHERE <condition>",
+      "syntax_generalized": "MOVE PROPERTY <name> FROM <src> TO <dst> WHERE <condition>",
+      "snippet_specific": "MOVE_PROPERTY ${1:property} FROM ${2:src} TO ${3:dst} WHERE ${4:src.id = dst.id}$0",
+      "snippet_generalized": "MOVE PROPERTY ${1:property} FROM ${2:src} TO ${3:dst} WHERE ${4:src.id = dst.id}$0",
+      "template_specific": "MOVE_PROPERTY {name} FROM {src} TO {dst} WHERE {cond}",
+      "template_generalized": "MOVE PROPERTY {name} FROM {src} TO {dst} WHERE {cond}"
     },
 
     "MERGE": {
@@ -474,12 +474,12 @@
       "specific": "MERGE",
       "generalized": "MERGE",
       "doc": "Combine two entities into one new entity",
-      "syntax_specific": "MERGE <A>, <B> INTO <C> [AS <alias>]",
-      "syntax_generalized": "MERGE <A>, <B> INTO <C> [AS <alias>]",
-      "snippet_specific": "MERGE ${1:entityA}, ${2:entityB} INTO ${3:merged}$0",
-      "snippet_generalized": "MERGE ${1:entityA}, ${2:entityB} INTO ${3:merged}$0",
-      "template_specific": "MERGE {a}, {b} INTO {c}{as_clause}",
-      "template_generalized": "MERGE {a}, {b} INTO {c}{as_clause}"
+      "syntax_specific": "MERGE <A>, <B> WHERE <condition> INTO <C> [AS <alias>]",
+      "syntax_generalized": "MERGE <A>, <B> WHERE <condition> INTO <C> [AS <alias>]",
+      "snippet_specific": "MERGE ${1:entityA}, ${2:entityB} WHERE ${3:a.id = b.id} INTO ${4:merged}$0",
+      "snippet_generalized": "MERGE ${1:entityA}, ${2:entityB} WHERE ${3:a.id = b.id} INTO ${4:merged}$0",
+      "template_specific": "MERGE {a}, {b} WHERE {cond} INTO {c}{as_clause}",
+      "template_generalized": "MERGE {a}, {b} WHERE {cond} INTO {c}{as_clause}"
     },
 
     "SPLIT": {

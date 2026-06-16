@@ -307,20 +307,20 @@ nest_gen: NEST qualifiedName COLON unnestFieldList IN qualifiedName WHERE condit
 // ============================================================================
 
 // COPY: Duplicate a property or entity
-// Example: COPY PROPERTY email FROM customers TO employee
+// Example: COPY PROPERTY email FROM customers TO employee WHERE employee.customer_id = customers.id
 // Example: COPY ENTITY customers AS employee
 // Example: COPY ENTITY works_at AS employed_at FROM customers TO company  (copy EDGE with explicit endpoints)
 copy_gen: COPY (entityCopy | propertyCopy);
-propertyCopy: PROPERTY identifier FROM qualifiedName TO qualifiedName;
+propertyCopy: PROPERTY identifier FROM qualifiedName TO qualifiedName WHERE condition;
 entityCopy: ENTITY qualifiedName AS identifier (FROM qualifiedName TO qualifiedName)?;
 
 // MOVE: Relocate a property to another entity (removes original)
-// Example: MOVE PROPERTY email FROM customers TO employee
-move_gen: MOVE PROPERTY identifier FROM qualifiedName TO qualifiedName;
+// Example: MOVE PROPERTY email FROM customers TO employee WHERE employee.customer_id = customers.id
+move_gen: MOVE PROPERTY identifier FROM qualifiedName TO qualifiedName WHERE condition;
 
 // MERGE: Combine two entities into one new entity
-// Example: MERGE A, B INTO C AS alias
-merge_gen: MERGE qualifiedName COMMA qualifiedName INTO identifier (AS identifier)?;
+// Example: MERGE A, B WHERE A.id = B.id INTO C AS alias
+merge_gen: MERGE qualifiedName COMMA qualifiedName WHERE condition INTO identifier (AS identifier)?;
 
 // SPLIT: Divide one entity into multiple separate entities (vertical partitioning)
 // Reference: AC - "SPLIT Person into Person:id, firstname, lastname AND knows:id, knows"
@@ -390,9 +390,12 @@ pathSegment: identifier (LBRACKET RBRACKET)?;
 identifier: IDENTIFIER;
 
 // Condition (simplified for schema migration)
-condition: qualifiedName EQUALS qualifiedName
+condition: equalityCondition
+         | edgeCondition
          | condition AND condition
          | LPAREN condition RPAREN;
+equalityCondition: qualifiedName EQUALS qualifiedName;
+edgeCondition: qualifiedName EDGE_LEFT identifier EDGE_RIGHT qualifiedName;
 
 // Literals
 literal: STRING_LITERAL | INTEGER_LITERAL | DECIMAL_LITERAL | TRUE | FALSE | NULL;
@@ -466,6 +469,7 @@ CHECK: 'CHECK';
 TRUE: 'true' | 'TRUE'; FALSE: 'false' | 'FALSE'; NULL: 'null' | 'NULL';
 
 // Symbols
+EDGE_LEFT: '-[:'; EDGE_RIGHT: ']->';
 COLON: ':'; SEMICOLON: ';'; COMMA: ','; DOT: '.'; LPAREN: '('; RPAREN: ')'; LBRACKET: '['; RBRACKET: ']';
 LBRACE: '{'; RBRACE: '}';
 EQUALS: '=';

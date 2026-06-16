@@ -93,6 +93,13 @@ class Neo4jAdapter(DatabaseAdapter):
             entity_kind=EntityKind.VERTEX
         )
 
+        # Additional labels beyond the primary one (e.g. customers:Employee).
+        # The Cypher block path sets this after the call; the JSON path carries
+        # them in a "labels" list and would otherwise drop them.
+        extra_labels = node_def.get("labels")
+        if extra_labels:
+            entity.labels = list(extra_labels)
+
         # Parse properties -> Property objects
         properties = node_def.get("properties", [])
         for prop_def in properties:

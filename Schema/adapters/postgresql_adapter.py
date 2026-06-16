@@ -196,8 +196,9 @@ class PostgreSQLAdapter(DatabaseAdapter):
         self.database: Optional[Database] = None
         # Pending references (column-level): (source_entity, fk_column, target_entity).
         # Stored during parsing, resolved after all tables are created.
-        # Each tuple becomes one Reference + one single-column ForeignKeyConstraint.
-        self._pending_references: List[Tuple[str, str, str]] = []
+        # Each tuple (source_entity, fk_col, target_table, target_col) becomes one
+        # Reference + one single-column ForeignKeyConstraint.
+        self._pending_references: List[Tuple[str, str, str, str]] = []
         # Pending table-level composite FKs: (source_entity, [src_cols], target_table, [tgt_cols]).
         # Stored separately because all columns of one FOREIGN KEY (a,b) REFERENCES t(x,y)
         # must fold into a SINGLE ForeignKeyConstraint with N ForeignKeyProperty
@@ -276,7 +277,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
                 # Store REFERENCES for later resolution
                 # e.g., "customer_id INTEGER REFERENCES customers(id)"
                 if ref_info:
-                    self._pending_references.append((entity.name, ref_info[0], ref_info[1]))
+                    self._pending_references.append((entity.name, ref_info[0], ref_info[1], ref_info[2]))
 
                 # Inline CHECK clause attached to this column. Anchor the
                 # CheckConstraint to the column's own meta_id — for
@@ -663,7 +664,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
         ref_info = None
         ref_match = re.search(r'REFERENCES\s+(\w+)\s*\((\w+)\)', constraints, re.IGNORECASE)
         if ref_match:
-            ref_info = (col_name, ref_match.group(1).lower())
+            ref_info = (col_name, ref_match.group(1).lower(), ref_match.group(2))
 
         # Column-level CHECK clause: ``CHECK (<expr>)``. The expression is
         # parsed via the same path as table-level CHECK so the AST shape is
@@ -774,7 +775,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
 
     def _resolve_references(self):
         """Resolve foreign key references after all entities are created."""
-        for entity_name, ref_name, target_name in self._pending_references:
+        for entity_name, ref_name, target_name, target_col in self._pending_references:
             entity = self.database.get_entity_type(entity_name)
             target = self.database.get_entity_type(target_name)
 
@@ -796,9 +797,26 @@ class PostgreSQLAdapter(DatabaseAdapter):
 
                 # Also create ForeignKeyConstraint for consistency with SMILE ADD_FOREIGN_KEY
                 if attr:
-                    target_pk = target.get_primary_key()
-                    if target_pk and target_pk.unique_properties:
-                        target_up_id = target_pk.unique_properties[0].meta_id
+                    # Resolve to the unique property for the specifically-referenced
+                    # target column (e.g. REFERENCES customers(customer_id)). Search
+                    # all PK/UNIQUE constraints; fall back to the target's first PK
+                    # property only if the named column can't be matched.
+                    target_up_id = None
+                    if target_col:
+                        for c in target.constraints:
+                            if c.kind == "unique":
+                                for up in c.unique_properties:
+                                    up_attr = target.get_property_by_id(up.property_id)
+                                    if up_attr and up_attr.name == target_col:
+                                        target_up_id = up.meta_id
+                                        break
+                            if target_up_id:
+                                break
+                    if target_up_id is None:
+                        target_pk = target.get_primary_key()
+                        if target_pk and target_pk.unique_properties:
+                            target_up_id = target_pk.unique_properties[0].meta_id
+                    if target_up_id is not None:
                         fk_prop = ForeignKeyProperty(
                             property_id=attr.meta_id,
                             points_to_unique_property_id=target_up_id
