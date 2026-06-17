@@ -5,7 +5,7 @@ import logging
 from typing import List
 
 from Schema.unified_meta_schema import (
-    EntityType, Property,
+    EntityType, EntityKind, Property,
     ForeignKeyConstraint,
     Reference, Embedded, Cardinality, TraceOrigin,
     PrimitiveDataType, PrimitiveType, ListDataType,
@@ -37,6 +37,18 @@ class StructuralHandlersMixin:
         target_entity = self._get_entity(target_name, "NEST")
         if not source_entity or not target_entity:
             return OperationResult.skipped("nest: precondition not met")
+
+        # NEST produces a document embedding; an EDGE entity is a graph
+        # relationship type and cannot be nested into or embedded. Reject it,
+        # mirroring the MERGE guard.
+        if source_entity.entity_kind == EntityKind.EDGE:
+            reason = f"nest: source '{source_name}' is an EDGE entity; NEST does not support edges"
+            logger.warning("%s", reason)
+            return OperationResult.skipped(reason)
+        if target_entity.entity_kind == EntityKind.EDGE:
+            reason = f"nest: target '{target_name}' is an EDGE entity; NEST does not support edges"
+            logger.warning("%s", reason)
+            return OperationResult.skipped(reason)
 
         # Determine embedding target_end_cardinality based on FK direction:
         #   - target holds FK to source (e.g., orders.customer_id → customers):

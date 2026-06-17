@@ -504,6 +504,11 @@ class SMILE_GeneralizedVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by SMILE_GeneralizedParser#equalityOnlyCondition.
+    def visitEqualityOnlyCondition(self, ctx:SMILE_GeneralizedParser.EqualityOnlyConditionContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by SMILE_GeneralizedParser#equalityCondition.
     def visitEqualityCondition(self, ctx:SMILE_GeneralizedParser.EqualityConditionContext):
         return self.visitChildren(ctx)

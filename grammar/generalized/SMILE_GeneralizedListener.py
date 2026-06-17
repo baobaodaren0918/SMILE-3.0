@@ -899,6 +899,15 @@ class SMILE_GeneralizedListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by SMILE_GeneralizedParser#equalityOnlyCondition.
+    def enterEqualityOnlyCondition(self, ctx:SMILE_GeneralizedParser.EqualityOnlyConditionContext):
+        pass
+
+    # Exit a parse tree produced by SMILE_GeneralizedParser#equalityOnlyCondition.
+    def exitEqualityOnlyCondition(self, ctx:SMILE_GeneralizedParser.EqualityOnlyConditionContext):
+        pass
+
+
     # Enter a parse tree produced by SMILE_GeneralizedParser#equalityCondition.
     def enterEqualityCondition(self, ctx:SMILE_GeneralizedParser.EqualityConditionContext):
         pass

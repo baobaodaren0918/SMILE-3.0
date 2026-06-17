@@ -255,7 +255,7 @@ wind: WIND qualifiedName;
 //   - 'IN customers.address' specifies target (customers entity, address field)
 //   - WHERE clause specifies join condition
 // Note: source entity is not removed automatically; use DELETE_ENTITY explicitly when desired.
-nest: NEST qualifiedName COLON unnestFieldList IN qualifiedName WHERE condition;
+nest: NEST qualifiedName COLON unnestFieldList IN qualifiedName WHERE equalityOnlyCondition;
 
 // ============================================================================
 // SIMPLE OPERATIONS
@@ -422,6 +422,12 @@ condition: equalityCondition
          | edgeCondition
          | condition AND condition
          | LPAREN condition RPAREN;
+// Equality-only condition for NEST. NEST infers embedding cardinality and the
+// absorbed FK from the equality's FK-bearing side, which an edge join does not
+// expose, so the edge form is excluded here at the grammar level.
+equalityOnlyCondition: equalityCondition
+         | equalityOnlyCondition AND equalityOnlyCondition
+         | LPAREN equalityOnlyCondition RPAREN;
 equalityCondition: qualifiedName EQUALS qualifiedName;
 edgeCondition: qualifiedName EDGE_LEFT identifier EDGE_RIGHT qualifiedName;
 

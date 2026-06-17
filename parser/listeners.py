@@ -121,30 +121,44 @@ class BaseSMILEListener:
         if condition_ctx is None:
             return []
 
-        # Equality leaf: qualifiedName EQUALS qualifiedName
+        # Equality leaf: qualifiedName EQUALS qualifiedName. Guard the operand
+        # count so a tree recovered from a syntax error (e.g. an edge form fed
+        # to NEST's equality-only condition) is skipped rather than crashing.
         eq = condition_ctx.equalityCondition() if hasattr(condition_ctx, "equalityCondition") else None
         if eq is not None:
             qns = eq.qualifiedName()
-            return [{
-                "type": "eq",
-                "left": qns[0].getText(),
-                "right": qns[1].getText(),
-            }]
+            if len(qns) >= 2:
+                return [{
+                    "type": "eq",
+                    "left": qns[0].getText(),
+                    "right": qns[1].getText(),
+                }]
+            return []
 
         # Edge leaf: qualifiedName -[:REL]-> qualifiedName  (graph relationship join)
         edge = condition_ctx.edgeCondition() if hasattr(condition_ctx, "edgeCondition") else None
         if edge is not None:
             qns = edge.qualifiedName()
-            return [{
-                "type": "edge",
-                "from": qns[0].getText(),
-                "rel": edge.identifier().getText(),
-                "to": qns[1].getText(),
-            }]
+            if len(qns) >= 2 and edge.identifier() is not None:
+                return [{
+                    "type": "edge",
+                    "from": qns[0].getText(),
+                    "rel": edge.identifier().getText(),
+                    "to": qns[1].getText(),
+                }]
+            return []
 
-        # Recursive: condition AND condition  /  (condition)
+        # Recursive: AND / parenthesised group. The node may be a full
+        # ``condition`` (MERGE/MOVE/COPY) or an equality-only ``condition`` used
+        # by NEST (``equalityOnlyCondition``); recurse on whichever child
+        # accessor the context exposes.
+        subs = []
+        if hasattr(condition_ctx, "condition") and condition_ctx.condition():
+            subs = condition_ctx.condition()
+        elif hasattr(condition_ctx, "equalityOnlyCondition") and condition_ctx.equalityOnlyCondition():
+            subs = condition_ctx.equalityOnlyCondition()
         pairs = []
-        for sub in (condition_ctx.condition() or []):
+        for sub in subs:
             pairs.extend(self._parse_condition_pairs(sub))
         return pairs
 
@@ -474,7 +488,7 @@ class SMILESpecificListener(SMILE_SpecificListener, BaseSMILEListener):
         target_location = ctx.qualifiedName(1).getText()    # customers.address
 
         # Parse WHERE condition(s): supports single or AND-chained conditions
-        join_conditions = self._parse_condition_pairs(ctx.condition())
+        join_conditions = self._parse_condition_pairs(ctx.equalityOnlyCondition())
         first_eq = next((c for c in join_conditions if c.get("type") == "eq"), None)
         source_fk = first_eq["left"] if first_eq else ""
         target_pk = first_eq["right"] if first_eq else ""
@@ -1001,7 +1015,7 @@ class SMILEGeneralizedListener(SMILE_GeneralizedListener, BaseSMILEListener):
         target_location = ctx.qualifiedName(1).getText()    # customers.address
 
         # Parse WHERE condition(s): supports single or AND-chained conditions
-        join_conditions = self._parse_condition_pairs(ctx.condition())
+        join_conditions = self._parse_condition_pairs(ctx.equalityOnlyCondition())
         first_eq = next((c for c in join_conditions if c.get("type") == "eq"), None)
         source_fk = first_eq["left"] if first_eq else ""
         target_pk = first_eq["right"] if first_eq else ""
