@@ -300,7 +300,7 @@ def run_migration(direction: str) -> Dict[str, Any]:
         return _early_exit(f"SMILE parse errors: {errors}")
 
     # Step 2: apply ops → Meta V2
-    transformer = SchemaTransformer(source_db)
+    transformer = SchemaTransformer(source_db, target_type=target_type)
     operations_detail, success_count, skipped_count, error_count = run_apply(transformer, operations)
 
     # Step 3: normalize + export Meta V2 → target DDL

@@ -35,8 +35,14 @@ def register_handler(op_type):
 class SchemaTransformerBase:
     """The instance state every ``_handle_*`` mixin operates on."""
 
-    def __init__(self, database: Database):
+    def __init__(self, database: Database, target_type: Optional[str] = None):
         self.database = copy.deepcopy(database)
+        # The migration's target model (e.g. "Document"), supplied by the
+        # pipeline. ``None`` when the transformer is used outside the pipeline
+        # (unit tests, ad-hoc calls), in which case target-model guards are
+        # skipped. Handlers use it to reject paradigm-incompatible operations
+        # such as NEST against a non-document target.
+        self.target_type = target_type
         self.changes: List[str] = []
         # Snapshot of source-schema primary keys taken at construction; NOT
         # updated as handlers run. Consumed by the web UI to render key badges

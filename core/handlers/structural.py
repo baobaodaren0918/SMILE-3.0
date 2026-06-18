@@ -17,6 +17,7 @@ from parser.params import (
 )
 from parser.listeners import OpType
 from core.transformer import register_handler
+from config import SOURCE_TYPE_DOCUMENT
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,18 @@ class StructuralHandlersMixin:
         target_entity = self._get_entity(target_name, "NEST")
         if not source_entity or not target_entity:
             return OperationResult.skipped("nest: precondition not met")
+
+        # NEST produces an embedded sub-object, a structure that exists only in
+        # the document model. Restrict it to migrations whose target is a
+        # document store. target_type is None outside the pipeline (unit tests),
+        # in which case the guard is skipped. Entity kinds are not normalised to
+        # DOCUMENT until export, so the target model is the reliable signal here
+        # rather than the parent entity's kind.
+        if self.target_type is not None and self.target_type != SOURCE_TYPE_DOCUMENT:
+            reason = (f"nest: target model is '{self.target_type}'; NEST is only valid "
+                      f"when migrating to a document store")
+            logger.warning("%s", reason)
+            return OperationResult.skipped(reason)
 
         # NEST produces a document embedding; an EDGE entity is a graph
         # relationship type and cannot be nested into or embedded. Reject it,
