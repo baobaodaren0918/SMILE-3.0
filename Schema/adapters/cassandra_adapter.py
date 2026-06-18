@@ -211,9 +211,8 @@ class CassandraAdapter(DatabaseAdapter):
 
         pk_content = pk_match.group(1).strip()
 
-        # Check for composite partition key: ((part_cols), clust_cols)
-        composite_match = re.match(r'\(\((.+?)\)\s*(?:,\s*(.+))?\)', '(' + pk_content + ')')
-        # Try a direct pattern on pk_content
+        # Composite partition key has an inner ((...)) group, e.g.
+        # ((part1, part2), clust1). Detect it on pk_content directly.
         inner_match = re.match(r'\((.+?)\)\s*(?:,\s*(.+))?$', pk_content)
 
         if inner_match:
@@ -228,10 +227,14 @@ class CassandraAdapter(DatabaseAdapter):
 
             return partition_cols, clustering_cols
         else:
-            # Simple primary key: (col1) or (col1, col2)
-            # All columns are partition keys when there are no inner parentheses
-            cols = [c.strip().lower() for c in pk_content.split(',')]
-            return cols, []
+            # Simple primary key: PRIMARY KEY (col) or PRIMARY KEY (a, b, c).
+            # Per CQL, the FIRST column is the partition key and the rest are
+            # clustering columns. (A composite partition key requires an inner
+            # ((...)) group, handled by the branch above.)
+            cols = [c.strip().lower() for c in pk_content.split(',') if c.strip()]
+            if not cols:
+                return [], []
+            return cols[:1], cols[1:]
 
     def _build_pk_constraint(self, entity: EntityType, partition_cols: List[str], clustering_cols: List[str]):
         """Build UniqueConstraint with PARTITION and CLUSTERING key types."""

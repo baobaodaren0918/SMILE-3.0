@@ -840,13 +840,17 @@ class PostgreSQLAdapter(DatabaseAdapter):
 
             # Per-column Reference relationships (one per src column).
             # Cardinality follows the same rule used above for column-level FK.
-            target_pk = target.get_primary_key()
+            # Map every PK/UNIQUE target column name to its UniqueProperty id so a
+            # FOREIGN KEY may reference a non-PK UNIQUE column, mirroring the
+            # inline-FK path above (which searches all unique constraints, not
+            # only the primary key).
             target_up_lookup = {}
-            if target_pk:
-                for up in target_pk.unique_properties:
-                    up_attr = target.get_property_by_id(up.property_id)
-                    if up_attr:
-                        target_up_lookup[up_attr.name] = up.meta_id
+            for c in target.constraints:
+                if c.kind == "unique":
+                    for up in c.unique_properties:
+                        up_attr = target.get_property_by_id(up.property_id)
+                        if up_attr and up_attr.name not in target_up_lookup:
+                            target_up_lookup[up_attr.name] = up.meta_id
 
             fk_props: List[ForeignKeyProperty] = []
             for src_col, tgt_col in zip(src_cols, tgt_cols):
@@ -1003,7 +1007,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
 
         # Process properties -> columns
         for attr in entity.properties:
-            col_def = cls._export_property_to_column(attr, fk_refs.get(attr.name), database, is_composite_pk)
+            col_def = cls._export_property_to_column(attr, fk_refs.get(attr.name), database, is_composite_pk, source_entity=entity)
             columns.append(f"    {col_def}")
 
         # Add composite PRIMARY KEY constraint if needed
@@ -1102,7 +1106,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
         return ""
 
     @classmethod
-    def _export_property_to_column(cls, attr: Property, fk_ref: Reference = None, database: Database = None, is_composite_pk: bool = False) -> str:
+    def _export_property_to_column(cls, attr: Property, fk_ref: Reference = None, database: Database = None, is_composite_pk: bool = False, source_entity=None) -> str:
         """Export a property to column definition."""
         parts = [attr.name]
 
@@ -1122,9 +1126,22 @@ class PostgreSQLAdapter(DatabaseAdapter):
         # Constraint: REFERENCES (foreign key)
         if fk_ref:
             target_entity_name = fk_ref.get_target_entity_name()
-            # Find target PK column from database metadata
-            target_pk_name = cls._get_target_pk_name(target_entity_name, database)
-            parts.append(f"REFERENCES {target_entity_name}({target_pk_name})")
+            # Resolve the specifically-referenced target column from this column's
+            # single-column ForeignKeyConstraint (points_to_unique_property_id), so
+            # a FK to a non-PK UNIQUE column exports the right column. Fall back to
+            # the target PK's first column when no matching constraint is found.
+            target_col_name = ""
+            if source_entity is not None:
+                for c in source_entity.constraints:
+                    if c.kind == "foreign_key" and len(c.foreign_key_properties) == 1:
+                        fkp = c.foreign_key_properties[0]
+                        if fkp.property_id == attr.meta_id:
+                            target_col_name = cls._resolve_fk_target_col(
+                                fkp.points_to_unique_property_id, target_entity_name, database)
+                            break
+            if not target_col_name:
+                target_col_name = cls._get_target_pk_name(target_entity_name, database)
+            parts.append(f"REFERENCES {target_entity_name}({target_col_name})")
 
         return " ".join(parts)
 
