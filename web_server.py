@@ -213,7 +213,11 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                         # so the canned-migration path and the user's Run-button path
                         # share one implementation.
                         from core import SchemaTransformer, run_apply, run_export
-                        transformer = SchemaTransformer(src_db)
+                        # Resolve the target model up front and pass it to the
+                        # transformer so target-model guards apply on this path too
+                        # (e.g. NEST is document-only), matching run_migration().
+                        tgt_type_resolved = _resolve_db_type(target_db_type)
+                        transformer = SchemaTransformer(src_db, target_type=tgt_type_resolved)
                         ops_detail, applied, skipped_ct, error_ct = run_apply(transformer, operations)
                         # Separate deliberate skips (handler returned OperationResult.skipped)
                         # from handler bugs (caught exception). Conflating them under a single
@@ -226,7 +230,6 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                         errors = [f"step {d['step']}: {d['type']} — {d.get('reason', '')}"
                                   for d in ops_detail if d['status'] == 'error']
 
-                        tgt_type_resolved = _resolve_db_type(target_db_type)
                         try:
                             result_db, exported_text, _ = run_export(
                                 transformer,
