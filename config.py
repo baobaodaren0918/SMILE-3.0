@@ -18,14 +18,8 @@ class MigrationConfig:
 # Base directory (project root)
 BASE_DIR = Path(__file__).parent
 
-# Schema files directory (contains PostgreSQL .sql and MongoDB .json schemas)
-SCHEMA_DIR = BASE_DIR / "Schema"
-
 # Tests directory (contains .smile migration scripts and test data)
 TESTS_DIR = BASE_DIR / "tests"
-
-# Grammar directory (contains ANTLR4 grammar and generated parser)
-GRAMMAR_DIR = BASE_DIR / "grammar"
 
 
 # SOURCE/TARGET TYPE CONSTANTS

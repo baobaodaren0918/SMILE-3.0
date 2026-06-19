@@ -1,7 +1,6 @@
 """Parser Factory - Auto-select parser based on file extension"""
 import sys
 from pathlib import Path
-from typing import Tuple, List
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -55,50 +54,6 @@ def get_parser_components(grammar_type: str):
         return SMILE_GeneralizedLexer, SMILE_GeneralizedParser, SMILE_GeneralizedListener
     else:
         raise ValueError(f"Unknown grammar type: {grammar_type}. Expected 'specific' or 'generalized'")
-
-
-def parse_smile_file(file_path: str, listener_class):
-    """Parse a SMILE file using the appropriate grammar."""
-    # Detect grammar type
-    grammar_type = detect_grammar_type(file_path)
-
-    # Get parser components
-    LexerClass, ParserClass, BaseListenerClass = get_parser_components(grammar_type)
-
-    # Verify listener inherits from correct base
-    if not issubclass(listener_class, BaseListenerClass):
-        raise TypeError(
-            f"Listener class must inherit from {BaseListenerClass.__name__} for {grammar_type} grammar"
-        )
-
-    # Create input stream
-    input_stream = FileStream(file_path, encoding='utf-8')
-
-    # Create lexer
-    lexer = LexerClass(input_stream)
-
-    # Create token stream
-    token_stream = CommonTokenStream(lexer)
-
-    # Create parser
-    parser = ParserClass(token_stream)
-
-    # Add error listener to both lexer and parser
-    error_listener = SyntaxErrorListener(grammar_type)
-    lexer.removeErrorListeners()
-    lexer.addErrorListener(error_listener)
-    parser.removeErrorListeners()
-    parser.addErrorListener(error_listener)
-
-    # Parse
-    tree = parser.migration()
-
-    # Walk parse tree with listener
-    listener = listener_class()
-    walker = ParseTreeWalker()
-    walker.walk(listener, tree)
-
-    return listener, error_listener.errors
 
 
 def get_grammar_info(file_path: str) -> dict:

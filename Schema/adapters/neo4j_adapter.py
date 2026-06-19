@@ -210,14 +210,6 @@ class Neo4jAdapter(DatabaseAdapter):
     # CYPHER DDL PARSING
     # =========================================================================
 
-    # Cardinality string to enum mapping for Cypher parsing
-    CARDINALITY_STR_MAP: Dict[str, Cardinality] = {
-        "1..1": Cardinality.ONE_TO_ONE,
-        "1..n": Cardinality.ONE_TO_MANY,
-        "0..1": Cardinality.ZERO_TO_ONE,
-        "0..n": Cardinality.ZERO_TO_MANY,
-    }
-
     def parse_cypher(self, cypher_content: str, db_name: str = "database") -> Database:
         """Parse Neo4j Cypher DDL text and return Database object."""
         self.database = Database(db_name=db_name, db_type=DatabaseType.GRAPH)

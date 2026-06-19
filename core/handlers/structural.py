@@ -1,12 +1,9 @@
 """Handlers for structural reshaping ops — NEST/UNNEST, FLATTEN/UNFLATTEN, WIND/UNWIND."""
 
-import copy
 import logging
-from typing import List
 
 from Schema.unified_meta_schema import (
     EntityType, EntityKind, Property,
-    ForeignKeyConstraint,
     Reference, Embedded, Cardinality, TraceOrigin,
     PrimitiveDataType, PrimitiveType, ListDataType,
 )

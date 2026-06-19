@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from Schema.unified_meta_schema import (
-    Cardinality, Database, EntityType, Property, PrimitiveDataType, PrimitiveType,
+    Cardinality, Database, EntityType, Property,
     RelationshipTrace, TraceOrigin,
 )
 

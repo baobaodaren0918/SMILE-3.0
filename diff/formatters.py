@@ -1,8 +1,7 @@
 """Formatters that convert a ``DatabaseDiff`` into the dict shapes expected by"""
-from dataclasses import asdict
 from typing import Any, Dict, List
 
-from diff.engine import DatabaseDiff, EntityDiff, ConstraintDiff
+from diff.engine import DatabaseDiff, EntityDiff
 
 
 # UI formatter (legacy shape from core._calculate_changes)

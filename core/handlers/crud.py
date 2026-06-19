@@ -6,7 +6,7 @@ from typing import List
 
 from Schema.unified_meta_schema import (
     EntityType, EntityKind, Property,
-    UniqueConstraint, ForeignKeyConstraint, UniqueProperty, PKTypeEnum,
+    UniqueConstraint, UniqueProperty, PKTypeEnum,
     Reference, Embedded, Edge, Cardinality,
     PrimitiveDataType, PrimitiveType,
     CARDINALITY_MAP, TYPE_STR_MAP,

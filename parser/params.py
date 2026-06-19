@@ -10,7 +10,6 @@ class KeyType(str, Enum):
     """Surface-level key discriminator for ADD_KEY / DELETE_KEY ops."""
     PRIMARY = "PRIMARY"
     UNIQUE = "UNIQUE"
-    FOREIGN = "FOREIGN"
     PARTITION = "PARTITION"
     CLUSTERING = "CLUSTERING"
 
@@ -71,7 +70,6 @@ class UnnestParams:
     properties: List[str] = field(default_factory=list)
     nested: List[Dict[str, Any]] = field(default_factory=list)
     carry_fields: List[Dict[str, Any]] = field(default_factory=list)
-    name: Optional[str] = None
 
     def __post_init__(self) -> None:
         _require_nonempty(self, "source_path", "target")

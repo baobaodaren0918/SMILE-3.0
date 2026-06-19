@@ -441,7 +441,7 @@ class KeysConstraintsHandlersMixin:
         key_attrs = self._upsert_key_properties(entity, key_columns, key_data_type)
         key_type_str, pk_type_enum = self._resolve_pk_type(params.key_type)
         constraint = self._build_key_constraint(
-            key_attrs, key_type_str, pk_type_enum, params.clauses
+            key_attrs, key_type_str, pk_type_enum
         )
 
         # For PK constraints, Cassandra PARTITION/CLUSTERING may append to an
@@ -552,22 +552,13 @@ class KeysConstraintsHandlersMixin:
             return "primary", mapped
         return mapped, PKTypeEnum.SIMPLE
 
-    def _build_key_constraint(self, key_attrs, key_type_str, pk_type_enum, clauses):
-        """Construct a ForeignKeyConstraint or UniqueConstraint from resolved"""
-        if key_type_str == "foreign":
-            references = (clauses or {}).get("references", {})
-            ref_entity_name = references.get("table")
-            ref_attrs = references.get("columns", [])
-            fk_props = []
-            for i, attr in enumerate(key_attrs):
-                target_attr = ref_attrs[i] if i < len(ref_attrs) else (ref_attrs[0] if ref_attrs else "")
-                target_up_id = self._get_target_unique_property_id(ref_entity_name, target_attr)
-                fk_props.append(ForeignKeyProperty(
-                    property_id=attr.meta_id,
-                    points_to_unique_property_id=target_up_id,
-                ))
-            return ForeignKeyConstraint(is_managed=True, foreign_key_properties=fk_props)
+    def _build_key_constraint(self, key_attrs, key_type_str, pk_type_enum):
+        """Construct a UniqueConstraint from the resolved key attributes.
 
+        ADD_KEY only handles PRIMARY / UNIQUE / PARTITION / CLUSTERING. Foreign
+        keys are routed to ADD_FOREIGN_KEY (``_handle_add_foreign_key``), so no
+        foreign-key branch is needed here.
+        """
         unique_props = [
             UniqueProperty(primary_key_type=pk_type_enum, property_id=attr.meta_id)
             for attr in key_attrs
@@ -714,24 +705,7 @@ class KeysConstraintsHandlersMixin:
         key_columns_set = set(key_columns)
 
         for constraint in list(entity.constraints):
-            if key_type_str == "foreign" and constraint.kind == "foreign_key":
-                # Check if all FK columns match
-                fk_attr_names = set()
-                for fk_prop in constraint.foreign_key_properties:
-                    fk_attr = entity.get_property_by_id(fk_prop.property_id)
-                    if fk_attr:
-                        fk_attr_names.add(fk_attr.name)
-                if fk_attr_names == key_columns_set:
-                    entity.constraints.remove(constraint)
-                    for fk_prop in constraint.foreign_key_properties:
-                        fk_attr = entity.get_property_by_id(fk_prop.property_id)
-                        if fk_attr:
-                            fk_attr.is_key = False
-                    key_names_str = ", ".join(key_columns)
-                    self.changes.append(f"{operation}_KEY:{entity_name}.({key_names_str})")
-                    return OperationResult.ok()
-
-            elif key_type_str in ("primary", "unique") and constraint.kind == "unique":
+            if key_type_str in ("primary", "unique") and constraint.kind == "unique":
                 is_primary = (key_type_str == "primary")
                 if constraint.is_primary_key == is_primary:
                     # Check if all constraint columns match

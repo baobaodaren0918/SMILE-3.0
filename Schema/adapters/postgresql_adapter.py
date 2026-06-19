@@ -9,7 +9,7 @@ from ..unified_meta_schema import (
     CheckAnd, CheckOr, CheckNot, CheckRaw,
     Reference, Cardinality, PrimitiveDataType, PrimitiveType,
     ListDataType, SetDataType, MapDataType,
-    RelationshipType, TypeMappings
+    TypeMappings
 )
 from ._base import DatabaseAdapter
 
@@ -921,7 +921,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
             lines.append(ddl)
             lines.append("")
 
-        # Export RelationshipTypes as SQL comments (Graph metadata)
+        # Export EDGE relationship-type metadata as SQL comments (Graph metadata)
         if database.relationship_types:
             lines.append("-- Relationship Types (Graph metadata):")
             for rt in database.relationship_types.values():

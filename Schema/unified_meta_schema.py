@@ -108,7 +108,6 @@ CARDINALITY_MAP: Dict[str, Cardinality] = {
 KEY_TYPE_MAP: Dict[str, Any] = {
     "PRIMARY": "primary",
     "UNIQUE": "unique",
-    "FOREIGN": "foreign",
     "PARTITION": PKTypeEnum.PARTITION,
     "CLUSTERING": PKTypeEnum.CLUSTERING,
 }
@@ -1143,7 +1142,7 @@ class Embedded(Relationship):
 @dataclass
 class Edge(Relationship):
     """Graph edge relationship. M-Model+ extension: part of the Reference / Embedded / Edge hierarchy that replaces the original flat connector model."""
-    rel_type_name: str = ""    # Name of the RelationshipType (e.g. "PURCHASED")
+    rel_type_name: str = ""    # Name of the EDGE relationship type (e.g. "PURCHASED")
     source_entity: str = ""    # Source entity name
     target_entity: str = ""    # Target entity name
 
@@ -1342,69 +1341,6 @@ class EntityType:
         )
 
 
-# RELATIONSHIP TYPE (Neo4j edge type)
-
-@dataclass
-class RelationshipType:
-    """Neo4j edge type."""
-    rel_name: str
-    source_entity: str = ""  # Entity name (string only)
-    target_entity: str = ""  # Entity name (string only)
-    properties: List[Property] = field(default_factory=list)
-    target_end_cardinality: Cardinality = Cardinality.ZERO_TO_MANY  # multiplicity at the target end
-    source_end_cardinality: Optional[Cardinality] = None  # multiplicity at the source end, if known
-    bidirectional: Optional[bool] = None  # bidirectional edge flag
-    description: Optional[str] = None
-    meta_id: str = field(default_factory=_uid)
-
-    @property
-    def name(self) -> str:
-        return self.rel_name
-
-    def get_source_name(self) -> str:
-        return self.source_entity
-
-    def get_target_name(self) -> str:
-        return self.target_entity
-
-    def add_property(self, attr: Property):
-        self.properties.append(attr)
-
-    def to_dict(self) -> Dict[str, Any]:
-        d = {
-            "meta_id": self.meta_id,
-            "rel_name": self.rel_name,
-            "source_entity": self.source_entity,
-            "target_entity": self.target_entity,
-            "properties": [a.to_dict() for a in self.properties],
-            "target_end_cardinality": self.target_end_cardinality.value
-        }
-        if self.source_end_cardinality is not None:
-            d["source_end_cardinality"] = self.source_end_cardinality.value
-        if self.bidirectional is not None:
-            d["bidirectional"] = self.bidirectional
-        if self.description:
-            d["description"] = self.description
-        return d
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'RelationshipType':
-        attrs = [Property.from_dict(a) for a in data.get("properties", [])]
-        source_end_card_str = data.get("source_end_cardinality")
-        source_end_cardinality = Cardinality.from_symbol(source_end_card_str) if source_end_card_str else None
-        return cls(
-            rel_name=data.get("rel_name", ""),
-            source_entity=data.get("source_entity", ""),
-            target_entity=data.get("target_entity", ""),
-            properties=attrs,
-            target_end_cardinality=Cardinality.from_symbol(data.get("target_end_cardinality", "0..n")),
-            source_end_cardinality=source_end_cardinality,
-            bidirectional=data.get("bidirectional"),
-            description=data.get("description"),
-            meta_id=data.get("meta_id", _uid())
-        )
-
-
 # DATABASE (TOP-LEVEL)
 
 @dataclass
@@ -1450,7 +1386,7 @@ class Database:
                 return self.entity_types.pop(key, None)
         return None
 
-    # RelationshipType management (derived from EDGE entities)
+    # EDGE relationship-type management (derived from EDGE entities)
     @property
     def relationship_types(self) -> Dict[str, EntityType]:
         """Get all EDGE entities as relationship types (computed view)."""

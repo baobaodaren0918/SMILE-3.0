@@ -7,7 +7,7 @@ from ..unified_meta_schema import (
     UniqueConstraint, UniqueProperty, PKTypeEnum,
     Embedded, Reference, Cardinality, PrimitiveDataType, PrimitiveType,
     ListDataType, SetDataType, MapDataType,
-    RelationshipType, TypeMappings
+    TypeMappings
 )
 from ._base import DatabaseAdapter
 
