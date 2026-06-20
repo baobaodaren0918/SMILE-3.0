@@ -3,7 +3,8 @@
 -- Without this file the generalized grammar's rare branches (WIND, UNWIND,
 -- CAST PROPERTY, ADD UNIQUE KEY, DELETE UNIQUE KEY, COPY PROPERTY, MOVE
 -- PROPERTY, COPY ENTITY, RECARD, CAST ENTITY, ADD EMBEDDED, DELETE EMBEDDED,
--- ADD LABEL, DELETE LABEL) would never get parsed by the test suite.
+-- ADD LABEL, DELETE LABEL, ADD CONSTRAINT, DELETE CONSTRAINT) would never
+-- get parsed by the test suite.
 
 EVOLUTION grammar_completeness:1.0
 FROM RELATIONAL TO RELATIONAL
