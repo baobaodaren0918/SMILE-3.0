@@ -892,6 +892,7 @@
                     html = '<span class="param-key">source:</span> <span class="param-value">' + esc(params.source) + '</span> → ';
                     html += '<span class="param-key">target:</span> <span class="param-value">' + esc(params.target) + '</span>';
                     if (params.alias) html += ' <span class="param-key">as:</span> <span class="param-value">' + esc(params.alias) + '</span>';
+                    html += fmtJoinWhere(params.join_conditions);
                     break;
                 case 'DELETE_FOREIGN_KEY':
                     html = '<span class="param-key">reference:</span> <span class="param-value">' + esc(params.reference) + '</span>';

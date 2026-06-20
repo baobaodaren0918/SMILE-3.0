@@ -339,7 +339,7 @@ _RAW_CONFIGS = {
     },
 
     # ---------------------------------------------------------------------
-    # Grammar-completeness suite \u2014 exercises the 9 SMILE operations no other
+    # Grammar-completeness suite \u2014 exercises the SMILE operations no other
     # test invokes, on a tiny synthetic schema. Pure smoke-test for handler
     # reachability (no native target file \u2192 L1/L2 validation returns N/A).
     # ---------------------------------------------------------------------

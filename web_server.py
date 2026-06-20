@@ -24,6 +24,16 @@ PORT = 5601
 class SMILEHandler(SimpleHTTPRequestHandler):
     """HTTP request handler for SMILE web interface."""
 
+    def _send_json(self, obj, status=200, cache_control=None):
+        """Send a JSON response with the shared CORS header."""
+        self.send_response(status)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        if cache_control:
+            self.send_header('Cache-Control', cache_control)
+        self.end_headers()
+        self.wfile.write(json.dumps(obj).encode())
+
     def do_GET(self):
         try:
             if self.path == '/' or self.path == '/index.html':
@@ -77,12 +87,7 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                     except Exception as e:
                         result["parsed"][key] = {"__error": f'parse failed: {e}'}
 
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Cache-Control', 'no-cache')
-                self.end_headers()
-                self.wfile.write(json.dumps(result).encode())
+                self._send_json(result, cache_control='no-cache')
             elif self.path == '/api/operations_spec':
                 # Single source of truth for the editor's autocomplete
                 spec_path = Path(__file__).parent / 'grammar' / 'smile_operations.json'
@@ -90,12 +95,7 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                     payload = json.loads(spec_path.read_text(encoding='utf-8'))
                 except Exception as e:
                     payload = {"error": str(e)}
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Cache-Control', 'no-cache')
-                self.end_headers()
-                self.wfile.write(json.dumps(payload).encode())
+                self._send_json(payload, cache_control='no-cache')
             elif self.path.startswith('/api/migrate'):
                 query = self.path.split('?')[1] if '?' in self.path else ''
                 params = parse_qs(query)
@@ -106,12 +106,7 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                 except Exception as e:
                     result = {"error": f"Migration failed: {e}"}
 
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Cache-Control', 'no-cache')
-                self.end_headers()
-                self.wfile.write(json.dumps(result).encode())
+                self._send_json(result, cache_control='no-cache')
             else:
                 super().do_GET()
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
@@ -135,17 +130,9 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                         db_type = data.get('db_type', '')
                     result = inspect_schema(text, db_type, input_mode="text")
 
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps(result).encode())
+                    self._send_json(result)
                 except Exception as e:
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                    self._send_json({"error": str(e)})
             elif self.path == '/api/run_script':
                 content_length = int(self.headers.get('Content-Length', 0))
                 body = self.rfile.read(content_length)
@@ -322,17 +309,9 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                             "validation_blame": validation_blame,
                             "validation_summary": validation_summary,
                         }
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps(result).encode())
+                    self._send_json(result)
                 except Exception as e:
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"ok": False, "error": str(e), "stage": "exception"}).encode())
+                    self._send_json({"ok": False, "error": str(e), "stage": "exception"})
             elif self.path == '/api/validate_script':
                 content_length = int(self.headers.get('Content-Length', 0))
                 body = self.rfile.read(content_length)
@@ -342,17 +321,9 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                     syntax = data.get('syntax', 'specific')
                     errors = _validate_smile_text(text, syntax)
                     result = {"errors": errors, "ok": len(errors) == 0}
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps(result).encode())
+                    self._send_json(result)
                 except Exception as e:
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                    self._send_json({"error": str(e)})
             elif self.path == '/api/generate_script':
                 content_length = int(self.headers.get('Content-Length', 0))
                 body = self.rfile.read(content_length)
@@ -399,17 +370,9 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                         "target_token": tgt_token,
                         "kind": "evolution" if is_evolution else "migration",
                     }
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps(result).encode())
+                    self._send_json(result)
                 except Exception as e:
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                    self._send_json({"error": str(e)})
             else:
                 self.send_response(404)
                 self.end_headers()

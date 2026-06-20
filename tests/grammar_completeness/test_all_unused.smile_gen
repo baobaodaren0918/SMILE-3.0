@@ -1,4 +1,4 @@
--- Grammar completeness test (generalized variant) — same 12 ops as the
+-- Grammar completeness test (generalized variant) — the same ops as the
 -- specific .smile counterpart, just rewritten with the verb-object syntax.
 -- Without this file the generalized grammar's rare branches (WIND, UNWIND,
 -- CAST PROPERTY, ADD UNIQUE KEY, DELETE UNIQUE KEY, COPY PROPERTY, MOVE
