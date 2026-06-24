@@ -921,14 +921,6 @@ class PostgreSQLAdapter(DatabaseAdapter):
             lines.append(ddl)
             lines.append("")
 
-        # Export EDGE relationship-type metadata as SQL comments (Graph metadata)
-        if database.relationship_types:
-            lines.append("-- Relationship Types (Graph metadata):")
-            for rt in database.relationship_types.values():
-                cardinality_str = rt.target_end_cardinality.value if rt.target_end_cardinality else "0..n"
-                lines.append(f"-- {rt.rel_name}: {rt.source_entity} -> {rt.target_entity} ({cardinality_str})")
-            lines.append("")
-
         return "\n".join(lines)
 
     @classmethod

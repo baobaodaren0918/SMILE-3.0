@@ -123,9 +123,9 @@ def normalize_property_psm(db: Database, source_type: str, target_type: str) -> 
     # Strip it when migrating into a non-relational target.
     #
     # NB: ``is_optional`` is *not* stripped here. PG NOT NULL on non-PK
-    # columns is real source-side information that Cassandra DDL and the
-    # project's comment-based Cypher cannot carry — when these mismatches
-    # occur Layer 1 surfaces them as nullability NOTICEs. Treating them
+    # columns is real source-side information that the Cassandra V2 ground
+    # truth does not declare — when these mismatches occur Layer 1 surfaces
+    # them as nullability NOTICEs. Treating them
     # as paradigm-capability diagnostics (and letting the user resolve
     # them script-side via ADD_CONSTRAINT EXISTENCE / DELETE_CONSTRAINT
     # when the column is genuinely meant to be nullable post-migration)

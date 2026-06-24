@@ -375,7 +375,7 @@ propertyDef: identifier dataType;
 // ============================================================================
 
 // Cardinality notation
-cardinalityType: ONE_TO_ONE | ONE_TO_MANY | ZERO_TO_ONE | ZERO_TO_MANY;
+cardinalityType: ONE_TO_ONE | ONE_TO_MANY | ZERO_TO_ONE | ZERO_TO_MANY | MANY_TO_MANY;
 
 // Constraint key type (for CAST CONSTRAINT)
 constraintKeyType: PRIMARY KEY | UNIQUE KEY | PARTITION KEY | CLUSTERING KEY | NODE KEY | DOCUMENT_ID;
@@ -448,7 +448,7 @@ STRUCTURE: 'STRUCTURE';
 // Cardinality
 CARDINALITY: 'CARDINALITY';
 ONE_TO_ONE: 'ONE_TO_ONE'; ONE_TO_MANY: 'ONE_TO_MANY';
-ZERO_TO_ONE: 'ZERO_TO_ONE'; ZERO_TO_MANY: 'ZERO_TO_MANY';
+ZERO_TO_ONE: 'ZERO_TO_ONE'; ZERO_TO_MANY: 'ZERO_TO_MANY'; MANY_TO_MANY: 'MANY_TO_MANY';
 
 // Data types
 STRING: 'String'; TEXT: 'Text'; INT: 'Int'; INTEGER: 'Integer'; LONG: 'Long';

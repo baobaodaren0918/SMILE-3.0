@@ -121,11 +121,11 @@
                 html += '<div class="sql-section"><div class="section-title">Original DDL</div>';
                 html += '<div class="sql-code-view"><pre>' + escapeHtml(migrationData.raw_source) + '</pre></div></div>';
             } else if (sourceType === 'Graph') {
-                // Graph Source: Graph Diagram + Original Cypher DDL
+                // Graph Source: Graph Diagram + Original Graph SDL
                 const sourceEntities = migrationData.meta_v1 || {};
                 html += '<div class="er-section"><div class="section-title">Graph Diagram</div>';
                 html += '<div class="er-diagram">' + generateGraphDiagram(sourceEntities, 'source') + '</div></div>';
-                html += '<div class="sql-section"><div class="section-title">Neo4j Cypher</div>';
+                html += '<div class="sql-section"><div class="section-title">Neo4j GraphQL SDL</div>';
                 html += '<div class="sql-code-view"><pre>' + escapeHtml(migrationData.raw_source) + '</pre></div></div>';
             } else if (sourceType === 'Columnar') {
                 // Columnar Source: Chebotko Diagram + Original CQL
@@ -158,7 +158,7 @@
                 html += '<div class="sql-section"><div class="section-title">' + exportLabel + '</div>';
                 html += '<div class="sql-code-view"><pre>' + escapeHtml(migrationData.exported_target) + '</pre></div></div>';
             } else if (targetType === 'Graph') {
-                // Graph Target: Graph Diagram + Generated Cypher
+                // Graph Target: Graph Diagram + Generated Graph SDL
                 const targetEntities = migrationData.target_with_db_types || migrationData.result;
                 html += '<div class="er-section"><div class="section-title">Graph Diagram</div>';
                 html += '<div class="er-diagram">' + generateGraphDiagram(targetEntities, 'target') + '</div></div>';
@@ -1142,7 +1142,7 @@
                         // target_end_cardinality, the referencing (child/head) end uses
                         // source_end_cardinality. Using only target_end_cardinality previously
                         // rendered every NOT NULL FK as 1:1 instead of N:1.
-                        const fmt = c => ({ '1..1': '1', '0..n': '0..N', '1..n': '1..N' }[c] || c);
+                        const fmt = c => ({ '1..1': '1', '0..n': '0..N', '1..n': '1..N', 'n..m': 'N..M' }[c] || c);
                         const tailLabel = fmt(ref.target_end_cardinality || '1..1');   // parent / referenced end
                         const headLabel = fmt(ref.source_end_cardinality || '0..n');   // child / referencing end
                         edgeList.push({ from: ref.target, to: entity.name, headLabel, tailLabel, label: ref.name });
@@ -1157,7 +1157,7 @@
                         connections[emb.target].add(entity.name);
                         const card = emb.target_end_cardinality || '1..1';
                         let headLabel = '1', tailLabel = '1';
-                        if (card === '1..n' || card === '0..n') headLabel = 'N';
+                        if (card === '1..n' || card === '0..n' || card === 'n..m') headLabel = 'N';
                         edgeList.push({ from: entity.name, to: emb.target, headLabel, tailLabel, label: 'embedded' });
                     }
                 });
@@ -1170,7 +1170,7 @@
                         connections[edge.target].add(entity.name);
                         const card = edge.target_end_cardinality || '1..1';
                         let headLabel = '1', tailLabel = '1';
-                        if (card === '1..n' || card === '0..n') headLabel = 'N';
+                        if (card === '1..n' || card === '0..n' || card === 'n..m') headLabel = 'N';
                         edgeList.push({ from: entity.name, to: edge.target, headLabel, tailLabel, label: edge.name });
                     }
                 });
@@ -1275,6 +1275,8 @@
         // Dynamic graph props storage (populated by generateGraphDiagram)
         let _dynNodeProps = { source: {}, target: {} };
         let _dynEdgeProps = { source: {}, target: {} };
+        // Extra Neo4j labels per node (multi-label), shown in the click card.
+        let _dynNodeLabels = { source: {}, target: {} };
 
         function generateGraphDiagram(entities, origin) {
             origin = origin || 'target';
@@ -1284,10 +1286,12 @@
             // Build dynamic property lookups from entity data (keyed by origin)
             _dynNodeProps[origin] = {};
             _dynEdgeProps[origin] = {};
+            _dynNodeLabels[origin] = {};
             entityList.forEach(entity => {
                 _dynNodeProps[origin][entity.name] = (entity.properties || []).map(a => ({
                     n: a.name, t: a.type, k: a.is_key
                 }));
+                _dynNodeLabels[origin][entity.name] = entity.labels || [];
             });
             const dynRelTypes = entities['__relationship_types__'] || {};
             Object.entries(dynRelTypes).forEach(([name, rt]) => {
@@ -1625,7 +1629,7 @@
                 // Relational: DDL only (ER Diagram is in Schema Comparison tab)
                 html += '<div class="schema-view"><pre class="schema-code">' + escapeHtml(migrationData.exported_target) + '</pre></div>';
             } else if (targetType === 'Graph') {
-                // Graph: Entity cards + Cypher DDL (Graph Diagram is in Schema Comparison tab)
+                // Graph: Entity cards + GraphQL SDL (Graph Diagram is in Schema Comparison tab)
                 const targetEntities = migrationData.target_with_db_types || migrationData.result;
                 const graphEntities = Object.values(filterEntities(targetEntities));
                 graphEntities.forEach(entity => {
@@ -1826,8 +1830,15 @@
                   + neoStats.fields + ' Properties — Property Graph Model</div>';
             html += '<div class="vis-and-code">';
             html += '<div class="vis-block"><div class="section-title">Graph Diagram</div>';
+            // Carry per-node labels from the parsed Meta V1 so the click card
+            // can list a node's extra Neo4j labels (origin 'source' matches the
+            // static diagram's onclick handlers).
+            _dynNodeLabels['source'] = {};
+            Object.keys(parsed.neo4j || {})
+                .filter(k => !k.startsWith('__'))
+                .forEach(k => { _dynNodeLabels['source'][k] = (parsed.neo4j[k] || {}).labels || []; });
             html += '<div class="er-diagram">' + getStaticGraphDiagram(neoStats) + '</div></div>';
-            html += '<div class="code-block-wrapper"><div class="section-title">Cypher Schema</div>';
+            html += '<div class="code-block-wrapper"><div class="section-title">GraphQL SDL Schema</div>';
             html += '<div class="sql-code-view"><pre>' + escapeHtml(data.neo4j) + '</pre></div></div>';
             html += '</div></div>';
 
@@ -2044,7 +2055,7 @@
         }
 
         // ── Static Graph Diagram (Neo4j Northwind) ──
-        // Neo4j property data (from northwind_neo4j.cypher)
+        // Neo4j property data (from northwind_neo4j.graphql)
         const _neo4jNodeProps = {
             orders: [
                 {n:'order_id',t:'string',k:true},{n:'order_date',t:'date'},{n:'required_date',t:'date'},
@@ -2113,7 +2124,12 @@
                 const props = dynProps || _neo4jNodeProps[name] || [];
                 const count = props.length;
                 const pkLbl = getPkLabel(origin === 'source' ? migrationData.source_type : migrationData.target_type);
+                const labels = (_dynNodeLabels[origin] || {})[name] || [];
                 html = '<div class="card-title" style="color:#3B82F6;">:' + name + '</div>';
+                if (labels.length) {
+                    html += '<div class="card-labels" style="font-size:11px;color:#8B5CF6;margin-top:2px;">'
+                        + 'Labels: ' + labels.map(l => ':' + escapeHtml(l)).join(' ') + '</div>';
+                }
                 html += '<div class="card-subtitle">' + count + ' properties</div>';
                 props.forEach(p => {
                     html += '<div class="prop-row"><span class="prop-name">' + p.n
@@ -2172,7 +2188,7 @@
         // The graph layout below is hand-laid for visual clarity (orders +
         // products as twin "hub" nodes with satellites around them); the
         // schema-section-subtitle is generated dynamically from the parsed
-        // Meta V1, so the only drift risk left is when the .cypher file
+        // Meta V1, so the only drift risk left is when the graph schema file
         // gains/loses an entity that the static layout would not visualise.
         // Pass the parsed counts in via ``stats`` so the legend annotation
         // at the bottom of the SVG mirrors reality.
@@ -2308,7 +2324,7 @@
                 } else {
                     const e = item.data;
                     const card = e.target_end_cardinality || '1..1';
-                    const isArray = card.endsWith('..n') || card.endsWith('..*');
+                    const isArray = card.endsWith('..n') || card.endsWith('..*') || card.endsWith('..m');
                     const tag = isArray ? '<span class="dt-arr">[array]</span>'
                                         : '<span class="dt-obj">{object}</span>';
                     const childPath = e.target || (fullPath + '.' + e.name);
@@ -2567,7 +2583,7 @@
                 document.getElementById(prefix + 'Text').value = e.target.result;
                 document.getElementById(prefix + 'FileInfo').textContent = 'Loaded: ' + file.name + ' (' + Math.round(file.size/1024) + ' KB)';
                 const ext = file.name.split('.').pop().toLowerCase();
-                const extMap = {sql:'relational', json:'document', cypher:'graph', cql:'columnar'};
+                const extMap = {sql:'relational', json:'document', graphql:'graph', gql:'graph', cql:'columnar'};
                 if (extMap[ext]) {
                     if (side === 'src') genState.srcDbType = extMap[ext];
                     else genState.tgtDbType = extMap[ext];
@@ -2802,14 +2818,14 @@
             const text = document.getElementById('genTgtText').value;
             if (!text.trim()) { alert('Target schema is empty.'); return; }
             // File extension follows the selected Target DB type
-            const extByType = {relational:'.sql', document:'.json', graph:'.cypher', columnar:'.cql'};
+            const extByType = {relational:'.sql', document:'.json', graph:'.graphql', columnar:'.cql'};
             const defaultExt = extByType[genState.tgtDbType] || '.txt';
             const defaultName = 'target_' + genState.tgtDbType + defaultExt;
             let filename = prompt('Save target schema as:', defaultName);
             if (!filename) return;
             filename = filename.trim();
             if (!filename) return;
-            if (!/\.(sql|json|cypher|cql|txt)$/i.test(filename)) filename += defaultExt;
+            if (!/\.(sql|json|graphql|gql|cql|txt)$/i.test(filename)) filename += defaultExt;
             const blob = new Blob([text], {type: 'text/plain'});
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

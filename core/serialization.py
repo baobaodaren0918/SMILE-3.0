@@ -372,117 +372,35 @@ def parse_original_source(raw_source: str, source_type: str) -> Dict[str, Any]:
             return {}
 
     elif source_type == SOURCE_TYPE_GRAPH:
-        # Parse Neo4j Graph schema - supports both Cypher DDL and JSON formats
-        # Detect format: Cypher DDL contains "// Node:" or "CREATE CONSTRAINT"
-        is_cypher = ('// Node:' in raw_source or 'CREATE CONSTRAINT' in raw_source)
+        # Parse graph schemas through the adapter so GraphQL SDL and legacy
+        # JSON render consistently in the UI.
+        try:
+            from Schema.adapters import Neo4jAdapter
+            db = Neo4jAdapter().parse(raw_source, "source")
+        except Exception:
+            return {}
 
-        if is_cypher:
-            # Parse Cypher DDL format
-            result = {}
-            lines = raw_source.split('\n')
-            i = 0
-            while i < len(lines):
-                line = lines[i].strip()
-
-                node_match = re.match(r'^// Node:\s+(\w+)', line)
-                if node_match:
-                    label = node_match.group(1)
-                    pk = None
-                    attrs = []
-                    j = i + 1
-                    while j < len(lines):
-                        nl = lines[j].strip()
-                        km = re.match(r'^// Key:\s+(\w+)', nl)
-                        if km:
-                            pk = km.group(1)
-                            j += 1
-                            continue
-                        cm = re.match(r'CREATE CONSTRAINT .+ REQUIRE n\.(\w+) IS UNIQUE;', nl)
-                        if cm:
-                            pk = cm.group(1)
-                            j += 1
-                            continue
-                        pm = re.match(r'^// Properties:\s+(.+)', nl)
-                        if pm:
-                            for prop in re.findall(r'(\w+)\s+\((\w+)\)', pm.group(1)):
-                                attrs.append({"name": prop[0], "type": prop[1], "is_key": prop[0] == pk})
-                            j += 1
-                            break
-                        if nl == '' or nl.startswith('// Node:') or nl.startswith('// Relationship:'):
-                            break
-                        j += 1
-                    result[label] = {"name": label, "type": "vertex", "properties": attrs}
-                    i = j
-                    continue
-
-                rel_match = re.match(r'^// Relationship:\s+(\w+)\s+\((\w+)\s+->\s+(\w+)\)', line)
-                if rel_match:
-                    rel_name = rel_match.group(1)
-                    source = rel_match.group(2)
-                    target = rel_match.group(3)
-                    attrs = []
-                    j = i + 1
-                    while j < len(lines):
-                        nl = lines[j].strip()
-                        pm = re.match(r'^// Properties:\s+(.+)', nl)
-                        if pm:
-                            for prop in re.findall(r'(\w+)\s+\((\w+)\)', pm.group(1)):
-                                attrs.append({"name": prop[0], "type": prop[1], "is_key": False})
-                            j += 1
-                            continue
-                        cm = re.match(r'^// Cardinality:', nl)
-                        if cm:
-                            j += 1
-                            break
-                        if nl == '' or nl.startswith('// Node:') or nl.startswith('// Relationship:'):
-                            break
-                        j += 1
-                    result[f"[{rel_name}]"] = {
-                        "name": f"{source} -[{rel_name}]-> {target}",
-                        "type": "edge",
-                        "properties": attrs
-                    }
-                    i = j
-                    continue
-                i += 1
-            return result
-        else:
-            # Parse JSON format (legacy)
-            try:
-                schema = json.loads(raw_source)
-                result = {}
-                for node_def in schema.get("nodes", []):
-                    label = node_def.get("label", "Unknown")
-                    pk = node_def.get("primary_key")
-                    attrs = []
-                    for prop in node_def.get("properties", []):
-                        attrs.append({
-                            "name": prop.get("name", ""),
-                            "type": prop.get("type", "string"),
-                            "is_key": prop.get("name") == pk
-                        })
-                    result[label] = {
-                        "name": label,
-                        "type": "vertex",
-                        "properties": attrs
-                    }
-                for rel_def in schema.get("relationships", []):
-                    rel_name = rel_def.get("type", "RELATED_TO")
-                    attrs = []
-                    for prop in rel_def.get("properties", []):
-                        attrs.append({
-                            "name": prop.get("name", ""),
-                            "type": prop.get("type", "string"),
-                            "is_key": False
-                        })
-                    result[f"[{rel_name}]"] = {
-                        "name": f"{rel_def.get('source', '')} -[{rel_name}]-> {rel_def.get('target', '')}",
-                        "type": "edge",
-                        "properties": attrs
-                    }
-                return result
-            except json.JSONDecodeError:
-                return {}
+        result = {}
+        for name, entity in db.entity_types.items():
+            if entity.entity_kind == EntityKind.VERTEX:
+                result[name] = {
+                    "name": name,
+                    "type": "vertex",
+                    "properties": [
+                        {"name": p.name, "type": _get_type_str(p.data_type), "is_key": p.is_key}
+                        for p in entity.properties
+                    ],
+                }
+            elif entity.entity_kind == EntityKind.EDGE:
+                result[f"[{name}]"] = {
+                    "name": f"{entity.source_entity} -[{name}]-> {entity.target_entity}",
+                    "type": "edge",
+                    "properties": [
+                        {"name": p.name, "type": _get_type_str(p.data_type), "is_key": False}
+                        for p in entity.properties
+                    ],
+                }
+        return result
 
     elif source_type == SOURCE_TYPE_COLUMNAR:
         # Parse Cassandra CQL DDL - return table structure with key_type

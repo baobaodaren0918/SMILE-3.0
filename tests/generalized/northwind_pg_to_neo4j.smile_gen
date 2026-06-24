@@ -1,6 +1,6 @@
 -- SMILE: PostgreSQL -> Neo4j (Generalized Operations Version)
 -- Cross-model Schema Migration: Relational -> Graph
--- Direction: northwind_postgresql.sql -> northwind_neo4j.cypher
+-- Direction: northwind_postgresql.sql -> northwind_neo4j.graphql
 --
 -- Pipeline: Source PG -> Reverse Engineering -> Meta V1
 --           -> SMILE Operations (this script) -> Meta V2
@@ -139,6 +139,8 @@ CAST CONSTRAINT categories.category_id TO NODE KEY
 CAST CONSTRAINT suppliers.supplier_id TO NODE KEY
 CAST CONSTRAINT shippers.shipper_id TO NODE KEY
 CAST CONSTRAINT employees.employee_id TO NODE KEY
+-- employees is also a Person node (Neo4j multi-label)
+ADD LABEL Person TO employees
 CAST CONSTRAINT customers.customer_id TO NODE KEY
 CAST CONSTRAINT products.product_id TO NODE KEY
 CAST CONSTRAINT orders.order_id TO NODE KEY
@@ -164,9 +166,9 @@ CAST CONSTRAINT orders.order_id TO NODE KEY
 -- ============================================
 
 -- ============================================
--- Operation Summary (32 steps, 8 operation types):
+-- Operation Summary (33 steps, 9 operation types):
 --   DELETE FOREIGN KEY:  8    DELETE PROPERTY:  8
 --   ADD ENTITY:         6    DELETE PRIMARY KEY: 1
 --   TRANSFORM:          1    RENAME ENTITY:     1
---   CAST CONSTRAINT:    7
+--   CAST CONSTRAINT:    7    ADD LABEL:         1
 -- ============================================

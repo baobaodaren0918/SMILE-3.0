@@ -1,6 +1,6 @@
 -- SMILE Northwind: Neo4j -> Cassandra (Generalized Operations Version)
 -- Cross-model Schema Migration: Graph -> Columnar
--- Direction: northwind_neo4j.cypher -> northwind_cassandra.cql
+-- Direction: northwind_neo4j.graphql -> northwind_cassandra.cql
 --
 -- Pipeline: Source Neo4j -> Reverse Engineering -> Meta V1 (Graph)
 --           -> SMILE Operations (this script) -> Meta V2 (Columnar)

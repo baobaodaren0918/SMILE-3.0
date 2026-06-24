@@ -1,6 +1,6 @@
 -- SMILE: Neo4j -> PostgreSQL (Generalized Operations Version)
 -- Cross-model Schema Migration: Graph -> Relational
--- Direction: northwind_neo4j.cypher -> northwind_postgresql.sql
+-- Direction: northwind_neo4j.graphql -> northwind_postgresql.sql
 --
 -- Pipeline: Source Neo4j -> Reverse Engineering -> Meta V1
 --           -> SMILE Operations (this script) -> Meta V2
@@ -11,9 +11,7 @@
 --   RENAME ENTITY:   Rename entity after TRANSFORM (relationship name -> table name)
 --   ADD PROPERTY:   Add FK attribute to entity (graph edge replaced by FK column)
 --   ADD FOREIGN KEY:  Add FK constraint (re-establish relational references)
---   ADD KEY (= PRIMARY KEY): Add composite PK to junction table.
---                            Generalized grammar's bare ADD KEY defaults to
---                            PRIMARY KEY subtype when keyType is omitted.
+--   ADD PRIMARY KEY:  Add composite PK to junction table
 --   DELETE ENTITY:   Remove relationship type (graph edge no longer needed)
 -- Note: Neo4j source already uses lowercase entity names (categories, suppliers, etc.)
 
@@ -65,7 +63,7 @@ ADD PROPERTY order_id TO order_details WITH TYPE String
 ADD PROPERTY product_id TO order_details WITH TYPE String
 ADD FOREIGN KEY order_details.order_id REFERENCES orders(order_id) WITH CARDINALITY ONE_TO_ONE
 ADD FOREIGN KEY order_details.product_id REFERENCES products(product_id) WITH CARDINALITY ONE_TO_ONE
-ADD KEY (order_id, product_id) TO order_details
+ADD PRIMARY KEY (order_id, product_id) TO order_details
 -- Result:
 -- order_details: { order_id [PK,FK], product_id [PK,FK], unit_price, quantity, discount }
 
@@ -160,6 +158,6 @@ CAST CONSTRAINT orders.order_id TO PRIMARY KEY
 -- Operation Summary (32 steps, 7 operation types):
 --   RENAME ENTITY:    1    ADD PROPERTY:     8
 --   ADD FOREIGN KEY:   8    DELETE ENTITY:     6
---   ADD KEY (= PRIMARY KEY): 1    TRANSFORM:         1
+--   ADD PRIMARY KEY:  1    TRANSFORM:         1
 --   CAST CONSTRAINT:  7
 -- ============================================

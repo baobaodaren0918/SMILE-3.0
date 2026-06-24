@@ -14,7 +14,7 @@ FROM GRAPH TO GRAPH
 USING adapted_northwind_schema VERSION 1 TO 2
 
 -- ============================================
--- Meta V1 (after Reverse Engineering of northwind_neo4j.cypher)
+-- Meta V1 (after Reverse Engineering of northwind_neo4j.graphql)
 -- ============================================
 -- 7 Nodes:
 --   categories { category_id, category_name, description }

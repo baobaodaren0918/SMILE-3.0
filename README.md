@@ -8,7 +8,7 @@ A formally defined DSL for schema migration and evolution between heterogeneous 
 |-------|-------------------|---------------|-------------|
 | **Relational** | PostgreSQL | SQL DDL (`.sql`) | TABLE |
 | **Document** | MongoDB | JSON Schema (`.json`) | DOCUMENT |
-| **Graph** | Neo4j | Cypher (`.cypher`) | VERTEX / EDGE |
+| **Graph** | Neo4j | GraphQL SDL (`.graphql`) | VERTEX / EDGE |
 | **Columnar** | Cassandra | CQL (`.cql`) | WIDE_COLUMN_TABLE |
 
 ## Installation
@@ -38,7 +38,7 @@ python web_server.py
 ```
 
 The web interface provides five tabs:
-- **Source Schemas** — inspect any of the 4 native schemas (SQL, JSON, Cypher, CQL) and the resulting Meta V1
+- **Source Schemas** — inspect any of the 4 native schemas (SQL, JSON, GraphQL SDL, CQL) and the resulting Meta V1
 - **User Transformation** — point at a source DDL, pick a target DB, generate a SMILE header, edit the script in the in-browser Ace editor (autocomplete + syntax highlighting), validate, then run; the resulting Meta V2 and Target Schema panels are rendered read-only
 - **Schema Comparison** — side-by-side card view of Meta V1 vs Meta V2 with structural diff highlighting
 - **SMILE Script** — script rendering and syntax-highlighted preview for any registered migration config
@@ -112,7 +112,7 @@ The Northwind dataset (8 entities: orders, products, customers, employees, categ
 |-------------|-------|
 | `tests/northwind_postgresql.sql` | Relational |
 | `tests/northwind_mongodb.json` | Document |
-| `tests/northwind_neo4j.cypher` | Graph |
+| `tests/northwind_neo4j.graphql` | Graph |
 | `tests/northwind_cassandra.cql` | Columnar |
 
 ## Project Structure
@@ -140,7 +140,7 @@ SMILE/
 ├── static/
 │   └── smile-app.js                   # Web UI app code (extracted from web_server.py)
 ├── tests/
-│   ├── northwind_*.sql/json/cypher/cql  # 4 source schemas (Northwind, all 4 paradigms)
+│   ├── northwind_*.sql/json/graphql/cql # 4 source schemas (Northwind, all 4 paradigms)
 │   ├── northwind_*_target.*             # Same-model evolution targets (V2)
 │   ├── specific/                        # 16 Specific scripts (.smile)
 │   ├── generalized/                     # 16 Generalized scripts (.smile_gen)
@@ -192,7 +192,7 @@ SMILE/
 ```
  Source Schema        SMILE Script (.smile/.smile_gen)         Target Schema
  (SQL/JSON/                      │                          (SQL/JSON/
-  Cypher/CQL)                    │                           Cypher/CQL)
+ GraphQL/CQL)                    │                          GraphQL/CQL)
       │                          ▼                                ▲
       │                   ┌──────────────┐                        │
       │                   │   Phase 2    │                        │

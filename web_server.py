@@ -223,7 +223,8 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                                 _resolve_db_type(source_db_type),
                                 tgt_type_resolved)
                             if not isinstance(exported_text, str):
-                                # Document/Graph adapters return dicts → JSON-stringify
+                                # The Document adapter returns a dict → JSON-stringify.
+                                # (Graph now exports a GraphQL SDL string.)
                                 exported_text = json.dumps(exported_text, indent=2, ensure_ascii=False)
                         except Exception as ex:
                             result_db = transformer.database
@@ -397,7 +398,7 @@ def _parse_schema_text(text: str, db_type: str, name: str):
         stripped = text.strip()
         if stripped.startswith('{') or stripped.startswith('['):
             return adapter.parse(json.loads(text), name)
-        return adapter.parse_cypher(text, name)
+        return adapter.parse(text, name)
     return adapter.parse(text, name)
 
 
@@ -451,9 +452,14 @@ def _validate_smile_text(text: str, syntax: str) -> list:
     )
     input_stream = InputStream(text or '')
     lexer = LexerClass(input_stream)
+    err = SyntaxErrorListener(syntax)
+    # Attach the listener to BOTH lexer and parser so the Validate button
+    # catches lexer-level errors (illegal chars / unrecognised tokens) too,
+    # matching parse_smile_auto's behaviour and the Run path.
+    lexer.removeErrorListeners()
+    lexer.addErrorListener(err)
     token_stream = CommonTokenStream(lexer)
     parser = ParserClass(token_stream)
-    err = SyntaxErrorListener(syntax)
     parser.removeErrorListeners()
     parser.addErrorListener(err)
     parser.migration()
@@ -1710,7 +1716,7 @@ def get_html():
                     </div>
 
                     <div id="genSrcPasteArea">
-                        <textarea class="inspector-textarea" id="genSrcText" placeholder="Paste source schema here (.sql / .json / .cypher / .cql)"></textarea>
+                        <textarea class="inspector-textarea" id="genSrcText" placeholder="Paste source schema here (.sql / .json / .graphql / .cql)"></textarea>
                     </div>
 
                     <div id="genSrcUploadArea" style="display:none;">
@@ -1720,8 +1726,8 @@ def get_html():
                              ondrop="handleGenSrcFileDrop(event)">
                             <div style="font-size:24px; margin-bottom:8px;">+</div>
                             <div style="font-size:13px; color:#86868B;">Drop file here or click to browse</div>
-                            <div style="font-size:11px; color:#AEAEB2; margin-top:4px;">.sql / .json / .cypher / .cql</div>
-                            <input type="file" id="genSrcFileInput" accept=".sql,.json,.cypher,.cql" style="display:none" onchange="handleGenSrcFileSelect(event)">
+                            <div style="font-size:11px; color:#AEAEB2; margin-top:4px;">.sql / .json / .graphql / .cql</div>
+                            <input type="file" id="genSrcFileInput" accept=".sql,.json,.graphql,.gql,.cql" style="display:none" onchange="handleGenSrcFileSelect(event)">
                         </div>
                         <div id="genSrcFileInfo" style="font-size:12px; color:#86868B; margin-bottom:12px;"></div>
                     </div>

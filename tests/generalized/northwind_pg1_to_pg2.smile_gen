@@ -37,8 +37,8 @@ DELETE PROPERTY products.category_id
 -- Business: Separate company identity from contact person info
 -- ============================================
 SPLIT customers INTO customers:customer_id, company_name, street, city, region, postal_code, country; customer_contacts:customer_id, contact_name, contact_title, phone, fax
-ADD KEY customer_id TO customers
-ADD KEY customer_contacts.contact_id AS String
+ADD PRIMARY KEY customer_id TO customers
+ADD PRIMARY KEY customer_contacts.contact_id AS String
 ADD FOREIGN KEY customer_contacts.customer_id REFERENCES customers(customer_id) WITH CARDINALITY ONE_TO_ONE
 
 -- ============================================
@@ -47,14 +47,14 @@ ADD FOREIGN KEY customer_contacts.customer_id REFERENCES customers(customer_id) 
 -- (Named sales_region to disambiguate from address.region columns.)
 -- ============================================
 ADD ENTITY sales_region WITH PROPERTIES (region_id String, region_description String)
-ADD KEY region_id TO sales_region
+ADD PRIMARY KEY region_id TO sales_region
 
 -- ============================================
 -- Phase 4: ADD territories (new entity, FK -> sales_region)
 -- Business: Sales territories within sales_region
 -- ============================================
 ADD ENTITY territories WITH PROPERTIES (territory_id String, territory_description String, region_id String)
-ADD KEY territory_id TO territories
+ADD PRIMARY KEY territory_id TO territories
 ADD FOREIGN KEY territories.region_id REFERENCES sales_region(region_id) WITH CARDINALITY ONE_TO_ONE
 
 -- ============================================
@@ -64,7 +64,7 @@ ADD FOREIGN KEY territories.region_id REFERENCES sales_region(region_id) WITH CA
 ADD ENTITY employee_territories
 ADD PROPERTY employee_id TO employee_territories WITH TYPE String
 ADD PROPERTY territory_id TO employee_territories WITH TYPE String
-ADD KEY (employee_id, territory_id) TO employee_territories
+ADD PRIMARY KEY (employee_id, territory_id) TO employee_territories
 ADD FOREIGN KEY employee_territories.employee_id REFERENCES employees(employee_id) WITH CARDINALITY ONE_TO_ONE
 ADD FOREIGN KEY employee_territories.territory_id REFERENCES territories(territory_id) WITH CARDINALITY ONE_TO_ONE
 
@@ -101,7 +101,7 @@ ADD PROPERTY status TO orders WITH TYPE String
 -- Operation Summary (26 steps, 10 operation types):
 --   MERGE: 1              SPLIT: 1
 --   ADD ENTITY: 3         ADD PROPERTY: 4
---   ADD KEY (= PRIMARY KEY): 5    ADD FOREIGN KEY: 4
+--   ADD PRIMARY KEY:         5    ADD FOREIGN KEY: 4
 --   DELETE FOREIGN KEY: 1          DELETE PRIMARY KEY: 1
 --   DELETE PROPERTY: 4   RENAME PROPERTY: 2
 -- ============================================

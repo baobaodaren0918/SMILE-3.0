@@ -12,7 +12,7 @@ class DatabaseAdapter(ABC):
     @classmethod
     @abstractmethod
     def load_from_file(cls, file_path: str, db_name: Optional[str] = None) -> Database:
-        """Read a native schema file (DDL / JSON / Cypher / CQL) and return a Database."""
+        """Read a native schema file (DDL / JSON / GraphQL SDL / CQL) and return a Database."""
         ...
 
     @classmethod

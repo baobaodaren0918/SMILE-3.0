@@ -1,6 +1,6 @@
 -- SMILE: Neo4j -> PostgreSQL (Specific Operations Version)
 -- Cross-model Schema Migration: Graph -> Relational
--- Direction: northwind_neo4j.cypher -> northwind_postgresql.sql
+-- Direction: northwind_neo4j.graphql -> northwind_postgresql.sql
 --
 -- Pipeline: Source Neo4j -> Reverse Engineering -> Meta V1
 --           -> SMILE Operations (this script) -> Meta V2

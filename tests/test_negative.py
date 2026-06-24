@@ -261,12 +261,12 @@ class TestAdapterMalformedInput:
         assert isinstance(db, Database)
         assert len(db.entity_types) == 0
 
-    def test_neo4j_invalid_json_routes_to_cypher(self):
-        # Strings starting with non-{ are routed to parse_cypher per the ABC
-        # contract introduced in stage 4; cypher parser is tolerant and simply
-        # returns an empty db rather than raising.
+    def test_neo4j_invalid_string_routes_to_graphql(self):
+        # Non-JSON string input is routed to the GraphQL SDL parser (the
+        # canonical Neo4j schema form). The parser is tolerant: garbage with
+        # no GraphQL type blocks yields an empty db rather than raising.
         from Schema.adapters import Neo4jAdapter
-        db = Neo4jAdapter().parse("not cypher either", "t")
+        db = Neo4jAdapter().parse("not graphql either", "t")
         assert isinstance(db, Database)
         assert len(db.entity_types) == 0
 

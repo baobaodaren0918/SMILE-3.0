@@ -9,9 +9,7 @@
 -- Operation Semantics:
 --   DELETE PARTITION KEY:   Remove Cassandra partition key before adding relational PK
 --   DELETE CLUSTERING KEY:  Remove Cassandra clustering key
---   ADD KEY (= PRIMARY KEY): Add relational primary key (simple or composite).
---                            Generalized grammar's bare ADD KEY defaults to
---                            PRIMARY KEY subtype when keyType is omitted.
+--   ADD PRIMARY KEY:         Add relational primary key (simple or composite)
 --   ADD FOREIGN KEY:         Add FK references (relational referential integrity)
 --   CAST CONSTRAINT:        Cast partition key to relational primary key
 
@@ -50,7 +48,7 @@ USING adapted_northwind_schema VERSION 1
 -- Relational: product_id [PK]
 DELETE PARTITION KEY (category_id, supplier_id) FROM products
 DELETE CLUSTERING KEY product_id FROM products
-ADD KEY product_id TO products
+ADD PRIMARY KEY product_id TO products
 -- Result:
 -- products (product_id [PK], product_name, unit_price, units_in_stock, discontinued, quantity_per_unit, supplier_id, category_id)
 
@@ -71,7 +69,7 @@ ADD FOREIGN KEY products.category_id REFERENCES categories(category_id) WITH CAR
 DELETE PARTITION KEY customer_id FROM orders
 DELETE CLUSTERING KEY order_date FROM orders
 DELETE CLUSTERING KEY order_id FROM orders
-ADD KEY order_id TO orders
+ADD PRIMARY KEY order_id TO orders
 -- Result:
 -- orders (order_id [PK], order_date, required_date, shipped_date, freight, ship_name, ship_address, ship_city, ship_region, ship_postal_code, ship_country, customer_id, employee_id, shipper_id)
 
@@ -91,7 +89,7 @@ ADD FOREIGN KEY orders.shipper_id REFERENCES shippers(shipper_id) WITH CARDINALI
 -- Cassandra: order_id [PARTITION], product_id [PARTITION]
 -- Relational: composite PK (order_id, product_id)
 DELETE PARTITION KEY (order_id, product_id) FROM order_details
-ADD KEY (order_id, product_id) TO order_details
+ADD PRIMARY KEY (order_id, product_id) TO order_details
 -- Result:
 -- order_details (order_id [PK], product_id [PK], unit_price, quantity, discount)
 
@@ -138,7 +136,7 @@ CAST CONSTRAINT customers.customer_id TO PRIMARY KEY
 -- ============================================
 -- Operation Summary (21 steps):
 --   DELETE PARTITION KEY:  3    DELETE CLUSTERING KEY: 3
---   ADD KEY (= PRIMARY KEY): 3    ADD FOREIGN KEY:        8
+--   ADD PRIMARY KEY:         3    ADD FOREIGN KEY:        8
 --   CAST CONSTRAINT:    5
 --   EntityKind auto-convert: WIDE_COLUMN_TABLE -> TABLE (all 8 tables)
 -- ============================================

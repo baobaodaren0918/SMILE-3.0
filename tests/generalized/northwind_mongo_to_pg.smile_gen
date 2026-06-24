@@ -29,7 +29,7 @@ UNNEST orders.details:unit_price, quantity, discount, product{product_name, unit
 
 -- Step 4: UNNEST employee -> employees + FLATTEN address + self-ref
 UNNEST orders.employee:last_name, first_name, title, birth_date, hire_date, phone, notes, reports_to, address{street, city, region, postal_code, country} AS employees WITH orders.order_id TO employees.order_id
-ADD KEY employees.employee_id AS String
+ADD PRIMARY KEY employees.employee_id AS String
 DELETE PROPERTY employees.order_id
 ADD PROPERTY employee_id TO orders WITH TYPE String
 ADD FOREIGN KEY orders.employee_id REFERENCES employees(employee_id) WITH CARDINALITY ONE_TO_ONE
@@ -43,28 +43,28 @@ RENAME PROPERTY address_country TO country IN employees
 
 -- Step 5: UNNEST shipper -> shippers
 UNNEST orders.shipper:company_name, phone AS shippers WITH orders.order_id TO shippers.order_id
-ADD KEY shippers.shipper_id AS String
+ADD PRIMARY KEY shippers.shipper_id AS String
 DELETE PROPERTY shippers.order_id
 ADD PROPERTY shipper_id TO orders WITH TYPE String
 ADD FOREIGN KEY orders.shipper_id REFERENCES shippers(shipper_id) WITH CARDINALITY ONE_TO_ONE
 
 -- Step 6: UNNEST product -> products (supplier carries flat address fields)
 UNNEST order_details.product:product_name, unit_price, units_in_stock, discontinued, quantity_per_unit, category{category_name, description}, supplier{company_name, contact_name, contact_title, phone, fax, street, city, region, postal_code, country} AS products WITH order_details.order_id TO products.order_id
-ADD KEY products.product_id AS String
+ADD PRIMARY KEY products.product_id AS String
 DELETE PROPERTY products.order_id
 ADD PROPERTY product_id TO order_details WITH TYPE String
 ADD FOREIGN KEY order_details.product_id REFERENCES products(product_id) WITH CARDINALITY ONE_TO_ONE
 
 -- Step 7: UNNEST supplier -> suppliers (no FLATTEN — supplier already has flat address)
 UNNEST products.supplier:company_name, contact_name, contact_title, phone, fax, street, city, region, postal_code, country AS suppliers WITH products.product_id TO suppliers.product_id
-ADD KEY suppliers.supplier_id AS String
+ADD PRIMARY KEY suppliers.supplier_id AS String
 DELETE PROPERTY suppliers.product_id
 ADD PROPERTY supplier_id TO products WITH TYPE String
 ADD FOREIGN KEY products.supplier_id REFERENCES suppliers(supplier_id) WITH CARDINALITY ONE_TO_ONE
 
 -- Step 8: UNNEST category -> categories
 UNNEST products.category:category_name, description AS categories WITH products.product_id TO categories.product_id
-ADD KEY categories.category_id AS String
+ADD PRIMARY KEY categories.category_id AS String
 DELETE PROPERTY categories.product_id
 ADD PROPERTY category_id TO products WITH TYPE String
 ADD FOREIGN KEY products.category_id REFERENCES categories(category_id) WITH CARDINALITY ONE_TO_ONE
@@ -80,4 +80,4 @@ RENAME PROPERTY ship_destination_ship_country TO ship_country IN orders
 -- Step 10: Wire up customer FK + composite PK
 ADD FOREIGN KEY orders.customer_id REFERENCES customers(customer_id) WITH CARDINALITY ONE_TO_ONE
 ADD FOREIGN KEY order_details.order_id REFERENCES orders(order_id) WITH CARDINALITY ONE_TO_ONE
-ADD KEY (order_id, product_id) TO order_details
+ADD PRIMARY KEY (order_id, product_id) TO order_details

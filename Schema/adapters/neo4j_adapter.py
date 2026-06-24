@@ -1,8 +1,8 @@
-"""Neo4j Adapter - Parse Neo4j Graph JSON Schema to Unified Meta Schema."""
+"""Neo4j Adapter - Parse Neo4j graph schemas to Unified Meta Schema."""
 import json
 import logging
 import re
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Tuple
 from ..unified_meta_schema import (
     Database, DatabaseType, EntityType, EntityKind, Property,
     UniqueConstraint, UniqueProperty, PKTypeEnum,
@@ -15,7 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 class Neo4jAdapter(DatabaseAdapter):
-    """Adapter to parse Neo4j graph schema JSON and create Unified Meta Schema."""
+    """Adapter to parse Neo4j graph schemas and create Unified Meta Schema.
+
+    Supported inputs:
+      * JSON shape: {"nodes": [...], "relationships": [...]}
+      * GraphQL SDL using @node, @relationship and @cardinality directives
+    """
 
     # =========================================================================
     # TYPE MAPPING (from centralized TypeMappings)
@@ -29,6 +34,7 @@ class Neo4jAdapter(DatabaseAdapter):
         "1..n": Cardinality.ONE_TO_MANY,
         "0..1": Cardinality.ZERO_TO_ONE,
         "0..n": Cardinality.ZERO_TO_MANY,
+        "n..m": Cardinality.MANY_TO_MANY,
     }
 
     # =========================================================================
@@ -51,7 +57,9 @@ class Neo4jAdapter(DatabaseAdapter):
             if stripped.startswith("{") or stripped.startswith("["):
                 schema = json.loads(stripped)
             else:
-                return self.parse_cypher(schema, db_name)
+                # Non-JSON string input is treated as GraphQL SDL (the canonical
+                # Neo4j schema form). Garbage input yields an empty graph database.
+                return self.parse_graphql(schema, db_name)
         self.database = Database(db_name=db_name, db_type=DatabaseType.GRAPH)
 
         # Step 1: Parse nodes -> EntityType with entity_kind=VERTEX
@@ -94,8 +102,8 @@ class Neo4jAdapter(DatabaseAdapter):
         )
 
         # Additional labels beyond the primary one (e.g. customers:Employee).
-        # The Cypher block path sets this after the call; the JSON path carries
-        # them in a "labels" list and would otherwise drop them.
+        # The GraphQL @node(labels: [...]) directive and the JSON "labels" list
+        # both carry these; they would otherwise be dropped.
         extra_labels = node_def.get("labels")
         if extra_labels:
             entity.labels = list(extra_labels)
@@ -207,156 +215,197 @@ class Neo4jAdapter(DatabaseAdapter):
         return PrimitiveDataType(primitive_type=primitive)
 
     # =========================================================================
-    # CYPHER DDL PARSING
+    # GRAPHQL SDL PARSING
     # =========================================================================
 
-    def parse_cypher(self, cypher_content: str, db_name: str = "database") -> Database:
-        """Parse Neo4j Cypher DDL text and return Database object."""
+    @staticmethod
+    def _looks_like_graphql(text: str) -> bool:
+        return bool(re.search(r'(?m)^\s*(directive|scalar|enum|type|interface)\b', text))
+
+    @staticmethod
+    def _strip_graphql_comments(text: str) -> str:
+        lines = []
+        for raw in text.splitlines():
+            in_string = False
+            escaped = False
+            out = []
+            for ch in raw:
+                if ch == '"' and not escaped:
+                    in_string = not in_string
+                if ch == "#" and not in_string:
+                    break
+                out.append(ch)
+                escaped = (ch == "\\" and not escaped)
+                if ch != "\\":
+                    escaped = False
+            lines.append("".join(out))
+        return "\n".join(lines)
+
+    @staticmethod
+    def _split_graphql_args(args: str) -> List[str]:
+        parts: List[str] = []
+        cur: List[str] = []
+        depth = 0
+        in_string = False
+        escaped = False
+        for ch in args:
+            if ch == '"' and not escaped:
+                in_string = not in_string
+            elif not in_string:
+                if ch == "[":
+                    depth += 1
+                elif ch == "]":
+                    depth -= 1
+                elif ch == "," and depth == 0:
+                    part = "".join(cur).strip()
+                    if part:
+                        parts.append(part)
+                    cur = []
+                    continue
+            cur.append(ch)
+            escaped = (ch == "\\" and not escaped)
+            if ch != "\\":
+                escaped = False
+        part = "".join(cur).strip()
+        if part:
+            parts.append(part)
+        return parts
+
+    @classmethod
+    def _parse_graphql_value(cls, value: str) -> Any:
+        value = value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            inner = value[1:-1].strip()
+            if not inner:
+                return []
+            return [cls._parse_graphql_value(p) for p in cls._split_graphql_args(inner)]
+        if value.startswith('"') and value.endswith('"'):
+            return value[1:-1]
+        return value
+
+    @classmethod
+    def _parse_graphql_directive_args(cls, text: str, directive: str) -> Dict[str, Any]:
+        match = re.search(rf'@{re.escape(directive)}\s*\(([^)]*)\)', text, re.DOTALL)
+        if not match:
+            return {}
+        result: Dict[str, Any] = {}
+        for part in cls._split_graphql_args(match.group(1)):
+            if ":" not in part:
+                continue
+            key, value = part.split(":", 1)
+            result[key.strip()] = cls._parse_graphql_value(value)
+        return result
+
+    @staticmethod
+    def _iter_graphql_type_blocks(sdl: str) -> List[Tuple[str, str, str]]:
+        blocks: List[Tuple[str, str, str]] = []
+        pattern = re.compile(r'\b(type|interface)\s+(\w+)\s*([^{]*)\{([^}]*)\}', re.DOTALL)
+        for match in pattern.finditer(sdl):
+            blocks.append((match.group(2), match.group(3).strip(), match.group(4)))
+        return blocks
+
+    @staticmethod
+    def _graphql_field_base_type(type_expr: str) -> str:
+        return re.sub(r'[\[\]!\s]', '', type_expr)
+
+    @staticmethod
+    def _graphql_to_neo4j_type(type_expr: str) -> str:
+        base_type = Neo4jAdapter._graphql_field_base_type(type_expr)
+        return {
+            "ID": "string",
+            "String": "string",
+            "Int": "integer",
+            "Float": "double",
+            "Boolean": "boolean",
+            "Date": "date",
+            "DateTime": "timestamp",
+        }.get(base_type, "string")
+
+    def parse_graphql(self, graphql_content: str, db_name: str = "database") -> Database:
+        """Parse GraphQL SDL into a graph Database object.
+
+        The SDL form intentionally uses a small project convention:
+        @relationship carries the relationship type and target node, while
+        @cardinality preserves the M-Model target/source end cardinalities
+        that plain GraphQL SDL cannot represent.
+        """
         self.database = Database(db_name=db_name, db_type=DatabaseType.GRAPH)
+        sdl = self._strip_graphql_comments(graphql_content)
+        blocks = self._iter_graphql_type_blocks(sdl)
 
-        lines = cypher_content.split('\n')
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
+        relationship_property_types: Dict[str, List[Dict[str, str]]] = {}
+        for type_name, header, body in blocks:
+            if "@relationshipProperties" not in header:
+                continue
+            props = []
+            for raw_line in body.splitlines():
+                line = raw_line.strip().rstrip(",")
+                if not line or line.startswith("@"):
+                    continue
+                field_match = re.match(r'^(\w+)\s*:\s*([^@\s]+)', line)
+                if field_match:
+                    props.append({
+                        "name": field_match.group(1),
+                        "type": self._graphql_to_neo4j_type(field_match.group(2)),
+                    })
+            relationship_property_types[type_name] = props
 
-            # Parse node blocks: "// Node: <Label>" or "// Node: <Label>:<Extra1>:<Extra2>"
-            node_match = re.match(r'^// Node:\s+([\w:]+)', line)
-            if node_match:
-                label_str = node_match.group(1)
-                label_parts = label_str.split(':')
-                label = label_parts[0]
-                extra_labels = label_parts[1:] if len(label_parts) > 1 else []
-                primary_key = None
-                properties = []
-
-                # Look ahead for Key/CREATE CONSTRAINT and Properties
-                j = i + 1
-                while j < len(lines):
-                    next_line = lines[j].strip()
-
-                    # // Key: <field> (comment-based format)
-                    key_match = re.match(r'^// Key:\s+(\w+)', next_line)
-                    if key_match:
-                        primary_key = key_match.group(1)
-                        j += 1
-                        continue
-
-                    # CREATE CONSTRAINT ... REQUIRE n.<field> IS UNIQUE/NODE KEY (executable format)
-                    # Single-column form. Symmetric to the export side that
-                    # writes ``REQUIRE n.<field> IS NODE KEY`` for length-1 PKs.
-                    constraint_match = re.match(
-                        r'CREATE CONSTRAINT .+ FOR \(n:[\w:]+\) REQUIRE n\.(\w+) IS (?:UNIQUE|NODE KEY);',
-                        next_line
-                    )
-                    if constraint_match:
-                        primary_key = constraint_match.group(1)
-                        j += 1
-                        continue
-
-                    # Composite NODE KEY: REQUIRE (n.a, n.b) IS NODE KEY.
-                    # Round-trip counterpart of the export side at line ~568:
-                    # ``REQUIRE (n.<col1>, n.<col2>) IS NODE KEY``.
-                    composite_match = re.match(
-                        r'CREATE CONSTRAINT .+ FOR \(n:[\w:]+\) REQUIRE \(([^)]+)\) IS NODE KEY;',
-                        next_line
-                    )
-                    if composite_match:
-                        # Inner list: "n.col1, n.col2" → strip the "n." prefix.
-                        cols = []
-                        for part in composite_match.group(1).split(','):
-                            part = part.strip()
-                            if part.startswith('n.'):
-                                cols.append(part[2:])
-                            else:
-                                cols.append(part)
-                        # Pass the list onwards as primary_key; _parse_node
-                        # accepts both str and list-of-str for primary_key.
-                        primary_key = cols
-                        j += 1
-                        continue
-
-                    # // Properties: field1 (type), field2 (type)
-                    props_match = re.match(r'^// Properties:\s+(.+)', next_line)
-                    if props_match:
-                        props_str = props_match.group(1)
-                        for prop in re.findall(r'(\w+)\s+\((\w+)\)', props_str):
-                            properties.append({"name": prop[0], "type": prop[1]})
-                        j += 1
-                        break  # Properties line ends the node block
-
-                    # Empty line or next block -> end of this node
-                    if next_line == '' or next_line.startswith('// Node:') or next_line.startswith('// Relationship:'):
-                        break
-                    j += 1
-
-                # Build node definition and parse it
-                node_def = {
-                    "label": label,
-                    "properties": properties,
-                    "primary_key": primary_key
-                }
-                entity = self._parse_node(node_def)
-                entity.labels = extra_labels
-                self.database.add_entity_type(entity)
-                i = j
+        pending_relationships: List[Dict[str, Any]] = []
+        for type_name, header, body in blocks:
+            if "@relationshipProperties" in header:
                 continue
 
-            # Parse relationship blocks: "// Relationship: <NAME> (<Source> -> <Target>)"
-            rel_match = re.match(r'^// Relationship:\s+(\w+)\s+\((\w+)\s+->\s+(\w+)\)', line)
-            if rel_match:
-                rel_name = rel_match.group(1)
-                source_label = rel_match.group(2)
-                target_label = rel_match.group(3)
-                rel_properties = []
-                target_end_cardinality_str = Cardinality.ZERO_TO_MANY.value
-                source_end_cardinality_str = None
+            node_args = self._parse_graphql_directive_args(header, "node")
+            primary_key = node_args.get("key")
+            if isinstance(primary_key, list) and len(primary_key) == 1:
+                primary_key = primary_key[0]
 
-                # Cardinality and Source-Cardinality may appear on consecutive
-                # lines, so consume both and stop only at an empty line or a
-                # new Node/Relationship block.
-                j = i + 1
-                while j < len(lines):
-                    next_line = lines[j].strip()
+            labels = node_args.get("labels", [])
+            if isinstance(labels, str):
+                labels = [labels]
 
-                    props_match = re.match(r'^// Properties:\s+(.+)', next_line)
-                    if props_match:
-                        props_str = props_match.group(1)
-                        for prop in re.findall(r'(\w+)\s+\((\w+)\)', props_str):
-                            rel_properties.append({"name": prop[0], "type": prop[1]})
-                        j += 1
-                        continue
+            properties = []
+            for raw_line in body.splitlines():
+                line = raw_line.strip().rstrip(",")
+                if not line or line.startswith("@"):
+                    continue
+                field_match = re.match(r'^(\w+)\s*:\s*([^@\s]+)\s*(.*)$', line)
+                if not field_match:
+                    continue
 
-                    card_match = re.match(r'^// Cardinality:\s+(.+)', next_line)
-                    if card_match:
-                        target_end_cardinality_str = card_match.group(1).strip()
-                        j += 1
-                        continue
+                field_name = field_match.group(1)
+                type_expr = field_match.group(2)
+                directives = field_match.group(3)
 
-                    source_card_match = re.match(r'^// Source-Cardinality:\s+(.+)', next_line)
-                    if source_card_match:
-                        source_end_cardinality_str = source_card_match.group(1).strip()
-                        j += 1
-                        continue
+                rel_args = self._parse_graphql_directive_args(directives, "relationship")
+                if rel_args:
+                    card_args = self._parse_graphql_directive_args(directives, "cardinality")
+                    prop_type_name = rel_args.get("properties")
+                    pending_relationships.append({
+                        "type": rel_args.get("type", field_name.upper()),
+                        "source": type_name,
+                        "target": rel_args.get("target") or self._graphql_field_base_type(type_expr),
+                        "properties": relationship_property_types.get(prop_type_name, []),
+                        "target_end_cardinality": card_args.get("target", Cardinality.ZERO_TO_MANY.value),
+                        "source_end_cardinality": card_args.get("source"),
+                    })
+                    continue
 
-                    # Empty line or next block -> end
-                    if next_line == '' or next_line.startswith('// Node:') or next_line.startswith('// Relationship:'):
-                        break
-                    j += 1
+                properties.append({
+                    "name": field_name,
+                    "type": self._graphql_to_neo4j_type(type_expr),
+                })
 
-                # Build relationship definition and parse it
-                rel_def = {
-                    "type": rel_name,
-                    "source": source_label,
-                    "target": target_label,
-                    "properties": rel_properties,
-                    "target_end_cardinality": target_end_cardinality_str,
-                    "source_end_cardinality": source_end_cardinality_str,
-                }
-                self._parse_relationship(rel_def)
-                i = j
-                continue
+            entity = self._parse_node({
+                "label": type_name,
+                "labels": labels,
+                "properties": properties,
+                "primary_key": primary_key,
+            })
+            self.database.add_entity_type(entity)
 
-            i += 1
+        for rel_def in pending_relationships:
+            self._parse_relationship(rel_def)
 
         return self.database
 
@@ -374,10 +423,11 @@ class Neo4jAdapter(DatabaseAdapter):
 
         adapter = Neo4jAdapter()
 
-        if file_path.endswith('.cypher'):
+        suffix = Path(file_path).suffix.lower()
+        if suffix in ('.graphql', '.gql'):
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            return adapter.parse_cypher(content, db_name)
+            return adapter.parse_graphql(content, db_name)
         else:
             with open(file_path, 'r', encoding='utf-8') as f:
                 try:
@@ -387,113 +437,121 @@ class Neo4jAdapter(DatabaseAdapter):
             return adapter.parse(schema, db_name)
 
     # =========================================================================
-    # EXPORT METHODS (Unified Meta Schema -> Cypher DDL)
+    # EXPORT METHODS (Unified Meta Schema -> GraphQL SDL)
     # =========================================================================
 
     @classmethod
-    def export_to_cypher(cls, database: Database) -> str:
-        """Export Unified Meta Schema to Neo4j Cypher DDL format."""
-        lines = []
-        lines.append("// Neo4j Graph Schema")
-        lines.append("// Generated by SMILE")
+    def _graphql_type_for_property(cls, attr: Property) -> str:
+        if not isinstance(attr.data_type, PrimitiveDataType):
+            return "String"
+        return {
+            PrimitiveType.STRING: "String",
+            PrimitiveType.INTEGER: "Int",
+            PrimitiveType.FLOAT: "Float",
+            PrimitiveType.DOUBLE: "Float",
+            PrimitiveType.BOOLEAN: "Boolean",
+            PrimitiveType.DATE: "Date",
+            PrimitiveType.TIMESTAMP: "DateTime",
+        }.get(attr.data_type.primitive_type, "String")
 
-        # Export node entities (VERTEX kind only)
-        for entity in database.entity_types.values():
-            if entity.entity_kind == EntityKind.VERTEX:
-                lines.append("")
-                node_lines = cls._export_node(entity)
-                lines.extend(node_lines)
+    @staticmethod
+    def _graphql_list(values: List[str]) -> str:
+        return "[" + ", ".join(f'"{v}"' for v in values) + "]"
 
-        # Export relationship types (EDGE entities)
+    @staticmethod
+    def _relationship_field_name(rel_name: str) -> str:
+        return rel_name.lower()
+
+    @staticmethod
+    def _relationship_field_type(target: str, cardinality: Cardinality) -> str:
+        if cardinality in (Cardinality.ZERO_TO_MANY, Cardinality.ONE_TO_MANY, Cardinality.MANY_TO_MANY):
+            return f"[{target}]"
+        return target
+
+    @classmethod
+    def export_to_graphql(cls, database: Database) -> str:
+        """Export Unified Meta Schema to GraphQL SDL.
+
+        This SDL is compatible with the Neo4j GraphQL style for relationship
+        fields, with an additional @cardinality directive for metadata that
+        GraphQL does not define natively.
+        """
+        lines = [
+            "# Neo4j Graph Schema",
+            "# Generated by SMILE",
+            "",
+            "directive @node(labels: [String!], key: [String!]) on OBJECT",
+            "directive @relationship(type: String!, target: String!, direction: RelationshipDirection = OUT, properties: String) on FIELD_DEFINITION",
+            "directive @relationshipProperties on OBJECT",
+            "directive @cardinality(target: String!, source: String) on FIELD_DEFINITION",
+            "enum RelationshipDirection { OUT IN }",
+            "scalar Date",
+            "scalar DateTime",
+        ]
+
         for entity in database.entity_types.values():
-            if entity.entity_kind == EntityKind.EDGE:
-                lines.append("")
-                rel_lines = cls._export_relationship(entity)
-                lines.extend(rel_lines)
+            if entity.entity_kind != EntityKind.EDGE or not entity.properties:
+                continue
+            prop_type_name = f"{entity.name}Properties"
+            lines.extend(["", f"type {prop_type_name} @relationshipProperties {{"])
+            for attr in entity.properties:
+                lines.append(f"  {attr.name}: {cls._graphql_type_for_property(attr)}")
+            lines.append("}")
+
+        for entity in database.entity_types.values():
+            if entity.entity_kind != EntityKind.VERTEX:
+                continue
+
+            pk_constraint = entity.get_primary_key()
+            pk_attrs = []
+            if pk_constraint and pk_constraint.unique_properties:
+                for up in pk_constraint.unique_properties:
+                    pk_attr = entity.get_property_by_id(up.property_id)
+                    if pk_attr:
+                        pk_attrs.append(pk_attr.name)
+
+            directive_parts = []
+            labels = getattr(entity, 'labels', [])
+            if labels:
+                directive_parts.append(f"labels: {cls._graphql_list(labels)}")
+            if pk_attrs:
+                directive_parts.append(f"key: {cls._graphql_list(pk_attrs)}")
+            node_directive = f" @node({', '.join(directive_parts)})" if directive_parts else " @node"
+
+            lines.extend(["", f"type {entity.name}{node_directive} {{"])
+            for attr in entity.properties:
+                gql_type = cls._graphql_type_for_property(attr)
+                suffix = "!" if attr.is_key else ""
+                lines.append(f"  {attr.name}: {gql_type}{suffix}")
+
+            source_edges = [
+                e for e in database.entity_types.values()
+                if e.entity_kind == EntityKind.EDGE and e.source_entity == entity.name
+            ]
+            for edge in source_edges:
+                target_card = edge.edge_target_end_cardinality or Cardinality.ZERO_TO_MANY
+                source_card = edge.edge_source_end_cardinality
+                field_type = cls._relationship_field_type(edge.target_entity, target_card)
+                rel_args = [
+                    f'type: "{edge.name}"',
+                    f'target: "{edge.target_entity}"',
+                    "direction: OUT",
+                ]
+                if edge.properties:
+                    rel_args.append(f'properties: "{edge.name}Properties"')
+                card_args = [f'target: "{target_card.value}"']
+                if source_card is not None:
+                    card_args.append(f'source: "{source_card.value}"')
+                lines.append(
+                    f"  {cls._relationship_field_name(edge.name)}: {field_type} "
+                    f"@relationship({', '.join(rel_args)}) "
+                    f"@cardinality({', '.join(card_args)})"
+                )
+            lines.append("}")
 
         return "\n".join(lines)
 
     @classmethod
-    def _export_node(cls, entity: EntityType) -> List[str]:
-        """Export a single node entity to Cypher constraint and property comments."""
-        lines = []
-        label = entity.name
-        # Include additional labels (e.g. customers:Employee)
-        extra_labels = getattr(entity, 'labels', [])
-        label_display = label + (''.join(f':{l}' for l in extra_labels) if extra_labels else '')
-        lines.append(f"// Node: {label_display}")
-
-        # Generate constraint for primary key property(s)
-        pk_constraint = entity.get_primary_key()
-        if pk_constraint and pk_constraint.unique_properties:
-            pk_attrs = []
-            for up in pk_constraint.unique_properties:
-                pk_attr = entity.get_property_by_id(up.property_id)
-                if pk_attr:
-                    pk_attrs.append(pk_attr.name)
-            if len(pk_attrs) == 1:
-                # Native ground-truth files use the ``// Key: <field>`` comment
-                # form rather than an executable ``CREATE CONSTRAINT``. The
-                # parser at ``_parse_node_block`` already accepts both, so
-                # exporting comments keeps round-trip intact while aligning
-                # with the project's chosen Cypher style.
-                lines.append(f"// Key: {pk_attrs[0]}")
-            elif len(pk_attrs) > 1:
-                constraint_name = f"{label.lower()}_pk"
-                props = ", ".join(f"n.{a}" for a in pk_attrs)
-                lines.append(
-                    f"CREATE CONSTRAINT {constraint_name} IF NOT EXISTS "
-                    f"FOR (n:{label_display}) REQUIRE ({props}) IS NODE KEY;"
-                )
-
-        # Generate property comment listing all properties with types
-        if entity.properties:
-            prop_strs = []
-            for attr in entity.properties:
-                type_str = cls.REVERSE_TYPE_MAP.get(
-                    attr.data_type.primitive_type, "string"
-                ) if isinstance(attr.data_type, PrimitiveDataType) else "string"
-                prop_strs.append(f"{attr.name} ({type_str})")
-            lines.append(f"// Properties: {', '.join(prop_strs)}")
-
-        return lines
-
-    @classmethod
-    def _export_relationship(cls, edge_entity: EntityType) -> List[str]:
-        """Export a single EDGE entity type to Cypher comments."""
-        lines = []
-        lines.append(
-            f"// Relationship: {edge_entity.name} "
-            f"({edge_entity.source_entity} -> {edge_entity.target_entity})"
-        )
-
-        # List relationship properties if any
-        if edge_entity.properties:
-            prop_strs = []
-            for attr in edge_entity.properties:
-                type_str = cls.REVERSE_TYPE_MAP.get(
-                    attr.data_type.primitive_type, "string"
-                ) if isinstance(attr.data_type, PrimitiveDataType) else "string"
-                prop_strs.append(f"{attr.name} ({type_str})")
-            lines.append(f"// Properties: {', '.join(prop_strs)}")
-
-        # Cardinality comment
-        target_end_cardinality = edge_entity.edge_target_end_cardinality or Cardinality.ZERO_TO_MANY
-        lines.append(f"// Cardinality: {target_end_cardinality.value}")
-
-        if edge_entity.edge_source_end_cardinality is not None:
-            lines.append(f"// Source-Cardinality: {edge_entity.edge_source_end_cardinality.value}")
-
-        return lines
-
-    @classmethod
     def export(cls, database: Database) -> str:
-        """Convenience method that calls export_to_cypher()."""
-        return cls.export_to_cypher(database)
-
-    @classmethod
-    def export_to_cypher_file(cls, database: Database, file_path: str) -> None:
-        """Export to Cypher DDL file."""
-        cypher = cls.export_to_cypher(database)
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(cypher)
+        """Convenience method that calls export_to_graphql()."""
+        return cls.export_to_graphql(database)

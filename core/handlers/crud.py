@@ -115,6 +115,9 @@ class CRUDHandlersMixin:
             # Recover side-aware target_end_cardinality from a recently-deleted FK; only
             # override the script's value when it was left at the default
             # (never silently contradict an explicit target_end_cardinality clause).
+            # No edge_name passed: ADD_ENTITY deliberately does NOT consume
+            # TRANSFORMED_EDGE traces (those are scoped to a TRANSFORM round-trip
+            # of the same edge name).
             recovered_source, recovered_target = self._consume_deleted_fk_for_edge(
                 source_entity, target_entity
             )

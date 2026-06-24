@@ -137,10 +137,12 @@ CAST_CONSTRAINT categories.category_id TO NODE KEY
 CAST_CONSTRAINT suppliers.supplier_id TO NODE KEY
 CAST_CONSTRAINT shippers.shipper_id TO NODE KEY
 CAST_CONSTRAINT employees.employee_id TO NODE KEY
+-- employees is also a Person node (Neo4j multi-label)
+ADD_LABEL Person TO employees
 CAST_CONSTRAINT customers.customer_id TO NODE KEY
 CAST_CONSTRAINT products.product_id TO NODE KEY
 CAST_CONSTRAINT orders.order_id TO NODE KEY
 
 -- ============================================
--- Final Result: 7 nodes + 7 relationships (matches northwind_neo4j.cypher)
+-- Final Result: 7 nodes + 7 relationships (matches northwind_neo4j.graphql)
 -- ============================================

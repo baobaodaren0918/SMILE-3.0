@@ -93,6 +93,8 @@ CAST CONSTRAINT categories.category_id TO NODE KEY
 CAST CONSTRAINT suppliers.supplier_id TO NODE KEY
 CAST CONSTRAINT shippers.shipper_id TO NODE KEY
 CAST CONSTRAINT employees.employee_id TO NODE KEY
+-- employees is also a Person node (Neo4j multi-label)
+ADD LABEL Person TO employees
 CAST CONSTRAINT customers.customer_id TO NODE KEY
 CAST CONSTRAINT products.product_id TO NODE KEY
 CAST CONSTRAINT orders.order_id TO NODE KEY

@@ -17,7 +17,8 @@ from config import (
 EXT_TO_DB_TYPE = {
     ".sql": SOURCE_TYPE_RELATIONAL,
     ".json": SOURCE_TYPE_DOCUMENT,
-    ".cypher": SOURCE_TYPE_GRAPH,
+    ".graphql": SOURCE_TYPE_GRAPH,
+    ".gql": SOURCE_TYPE_GRAPH,
     ".cql": SOURCE_TYPE_COLUMNAR,
 }
 
@@ -108,11 +109,11 @@ def _build_smile_template(db_type: str) -> str:
         f"USING my_schema:1",
         f"",
         f"-- Your operations here, for example:",
-        f"-- RENAME_ENTITY old_name AS new_name",
-        f"-- ADD_PROPERTY entity(prop_name Type)",
-        f"-- DELETE_PROPERTY entity(prop_name)",
-        f"-- NEST entity1, entity2 AS nested_name WITH ref_name",
-        f"-- FLATTEN entity(nested_name)",
+        f"-- RENAME_ENTITY old_name TO new_name",
+        f"-- ADD_PROPERTY prop_name TO entity WITH TYPE String",
+        f"-- DELETE_PROPERTY entity.prop_name",
+        f"-- NEST source:field1, field2 IN parent.alias WHERE parent.fk = source.pk",
+        f"-- FLATTEN entity.nested_name",
     ]
     return "\n".join(lines)
 
@@ -130,7 +131,7 @@ def inspect_schema(source: str, db_type: str, input_mode: str = "file",
 
     # Perform Reverse Engineering — uniform DatabaseAdapter API: every adapter's
     # parse(content: str) handles its native format internally (json.loads /
-    # JSON-vs-Cypher detection / DDL parsing).
+    # JSON-vs-GraphQL detection / DDL parsing).
     if input_mode == "file":
         db = adapter_class.load_from_file(source, db_name)
     elif input_mode == "text":
@@ -152,7 +153,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Schema Inspector — Reverse Engineer a schema into Meta Schema V1 (M-Model)"
     )
-    parser.add_argument("--file", "-f", help="Path to schema file (.sql/.json/.cypher/.cql)")
+    parser.add_argument("--file", "-f", help="Path to schema file (.sql/.json/.graphql/.gql/.cql)")
     parser.add_argument("--type", "-t", dest="db_type",
                         help="Database type: relational, document, graph, columnar "
                              "(auto-detected from file extension if omitted)")

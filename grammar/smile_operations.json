@@ -13,7 +13,7 @@
   },
   "enums": {
     "databaseType": ["RELATIONAL", "DOCUMENT", "GRAPH", "COLUMNAR"],
-    "cardinalityType": ["ONE_TO_ONE", "ONE_TO_MANY", "ZERO_TO_ONE", "ZERO_TO_MANY"],
+    "cardinalityType": ["ONE_TO_ONE", "ONE_TO_MANY", "ZERO_TO_ONE", "ZERO_TO_MANY", "MANY_TO_MANY"],
     "constraintKeyType": ["PRIMARY KEY", "UNIQUE KEY", "PARTITION KEY", "CLUSTERING KEY", "NODE KEY", "DOCUMENT_ID"],
     "dataType": ["String", "Text", "Int", "Integer", "Long", "Double", "Float", "Decimal", "Boolean", "Date", "DateTime", "Timestamp", "UUID", "Binary"]
   },

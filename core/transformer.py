@@ -80,7 +80,7 @@ class SchemaTransformerBase:
 
     def _remember_relationship_trace(
         self, holder: str, ref_name: str, target: str,
-        target_end_cardinality: Cardinality,
+        target_end_cardinality: Optional[Cardinality],
         source_end_cardinality: Optional[Cardinality] = None,
         origin: TraceOrigin = TraceOrigin.DELETED_REFERENCE,
     ) -> None:
@@ -108,7 +108,8 @@ class SchemaTransformerBase:
         )
 
     def _consume_deleted_fk_for_edge(
-        self, edge_source: str, edge_target: str
+        self, edge_source: str, edge_target: str,
+        edge_name: Optional[str] = None,
     ) -> Tuple[Optional[Cardinality], Optional[Cardinality]]:
         """Return ``(target_end_card, source_end_card)`` recovered from the
         relationship trace for the given Edge endpoints. Both ends of the trace
@@ -117,15 +118,28 @@ class SchemaTransformerBase:
         map straight through to the Edge's two ends; when the FK direction is
         reversed (opp-dir), the two ends swap.
 
-        Lookup ignores ref_name because ADD_ENTITY does not carry the
-        original FK column name. If multiple relationship trace entries
-        match the same endpoint pair, the lookup logs a warning and refuses
-        to guess; the caller falls back to the default cardinality.
+        Lookup ignores ref_name for FK/UNNEST-origin traces because ADD_ENTITY
+        does not carry the original FK column name. ``TRANSFORMED_EDGE`` traces
+        (seeded by TRANSFORM ... INTO ENTITY) are an exception: they are scoped
+        to their exact edge name, so they are eligible ONLY when the caller
+        passes a matching ``edge_name``. This keeps an edge->vertex->edge
+        round-trip's cardinality from being claimed by an unrelated ADD_ENTITY
+        or TRANSFORM that happens to share the same endpoint pair (ADD_ENTITY
+        passes no ``edge_name``, so it never consumes a transform trace).
+
+        If multiple eligible entries match the same endpoint pair, the lookup
+        logs a warning and refuses to guess; the caller falls back to the
+        default cardinality.
         """
+        def _eligible(t: "RelationshipTrace") -> bool:
+            if t.origin == TraceOrigin.TRANSFORMED_EDGE:
+                return edge_name is not None and t.ref_name == edge_name
+            return True
+
         same_dir = [t for t in self._relationship_trace
-                    if t.holder == edge_source and t.target == edge_target]
+                    if _eligible(t) and t.holder == edge_source and t.target == edge_target]
         opp_dir = [t for t in self._relationship_trace
-                   if t.holder == edge_target and t.target == edge_source]
+                   if _eligible(t) and t.holder == edge_target and t.target == edge_source]
 
         is_self_ref = edge_source == edge_target
 

@@ -42,7 +42,7 @@ DB_TYPE_DISPLAY_NAME = {
 DB_TYPE_EXPORT_LABEL = {
     SOURCE_TYPE_RELATIONAL: "PostgreSQL DDL",
     SOURCE_TYPE_DOCUMENT:   "MongoDB JSON Schema",
-    SOURCE_TYPE_GRAPH:      "Neo4j Cypher",
+    SOURCE_TYPE_GRAPH:      "Neo4j GraphQL SDL",
     SOURCE_TYPE_COLUMNAR:   "Cassandra CQL",
 }
 
@@ -51,7 +51,7 @@ DB_TYPE_EXPORT_LABEL = {
 NORTHWIND_SCHEMA_FILES = {
     "postgresql": TESTS_DIR / "northwind_postgresql.sql",
     "mongodb":    TESTS_DIR / "northwind_mongodb.json",
-    "neo4j":      TESTS_DIR / "northwind_neo4j.cypher",
+    "neo4j":      TESTS_DIR / "northwind_neo4j.graphql",
     "cassandra":  TESTS_DIR / "northwind_cassandra.cql",
 }
 
@@ -68,7 +68,7 @@ PRODUCT_TO_SOURCE_TYPE = {
 TARGET_SCHEMA_FILES = {
     SOURCE_TYPE_RELATIONAL: TESTS_DIR / "northwind_postgresql.sql",
     SOURCE_TYPE_DOCUMENT:   TESTS_DIR / "northwind_mongodb.json",
-    SOURCE_TYPE_GRAPH:      TESTS_DIR / "northwind_neo4j.cypher",
+    SOURCE_TYPE_GRAPH:      TESTS_DIR / "northwind_neo4j.graphql",
     SOURCE_TYPE_COLUMNAR:   TESTS_DIR / "northwind_cassandra.cql",
 }
 
@@ -79,7 +79,7 @@ MIGRATION_TARGET_FILES = {
     # Northwind same-model evolution
     "northwind_r2r": TESTS_DIR / "northwind_r2r_target.sql",
     "northwind_d2d": TESTS_DIR / "northwind_d2d_target.json",
-    "northwind_g2g": TESTS_DIR / "northwind_g2g_target.cypher",
+    "northwind_g2g": TESTS_DIR / "northwind_g2g_target.graphql",
     "northwind_c2c": TESTS_DIR / "northwind_c2c_target.cql",
 }
 
@@ -128,14 +128,14 @@ _RAW_CONFIGS = {
 
     # Northwind: Neo4j V1 -> Neo4j V2
     "northwind_g2g_specific": {
-        "source_file": TESTS_DIR / "northwind_neo4j.cypher",
+        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
         "smile_file": TESTS_DIR / "specific" / "northwind_graph1_to_graph2.smile",
         "source_type": SOURCE_TYPE_GRAPH,
         "target_type": SOURCE_TYPE_GRAPH,
         "display_name": "Northwind: Neo4j \u2192 Neo4j V2 (Specific)",
     },
     "northwind_g2g_generalized": {
-        "source_file": TESTS_DIR / "northwind_neo4j.cypher",
+        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
         "smile_file": TESTS_DIR / "generalized" / "northwind_graph1_to_graph2.smile_gen",
         "source_type": SOURCE_TYPE_GRAPH,
         "target_type": SOURCE_TYPE_GRAPH,
@@ -252,42 +252,42 @@ _RAW_CONFIGS = {
 
     # --- From Neo4j ---
     "northwind_g2r_specific": {
-        "source_file": TESTS_DIR / "northwind_neo4j.cypher",
+        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
         "smile_file": TESTS_DIR / "specific" / "northwind_neo4j_to_pg.smile",
         "source_type": SOURCE_TYPE_GRAPH,
         "target_type": SOURCE_TYPE_RELATIONAL,
         "display_name": "Northwind: Neo4j \u2192 PostgreSQL (Specific)",
     },
     "northwind_g2r_generalized": {
-        "source_file": TESTS_DIR / "northwind_neo4j.cypher",
+        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
         "smile_file": TESTS_DIR / "generalized" / "northwind_neo4j_to_pg.smile_gen",
         "source_type": SOURCE_TYPE_GRAPH,
         "target_type": SOURCE_TYPE_RELATIONAL,
         "display_name": "Northwind: Neo4j \u2192 PostgreSQL (Generalized)",
     },
     "northwind_g2d_specific": {
-        "source_file": TESTS_DIR / "northwind_neo4j.cypher",
+        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
         "smile_file": TESTS_DIR / "specific" / "northwind_neo4j_to_mongo.smile",
         "source_type": SOURCE_TYPE_GRAPH,
         "target_type": SOURCE_TYPE_DOCUMENT,
         "display_name": "Northwind: Neo4j \u2192 MongoDB (Specific)",
     },
     "northwind_g2d_generalized": {
-        "source_file": TESTS_DIR / "northwind_neo4j.cypher",
+        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
         "smile_file": TESTS_DIR / "generalized" / "northwind_neo4j_to_mongo.smile_gen",
         "source_type": SOURCE_TYPE_GRAPH,
         "target_type": SOURCE_TYPE_DOCUMENT,
         "display_name": "Northwind: Neo4j \u2192 MongoDB (Generalized)",
     },
     "northwind_g2c_specific": {
-        "source_file": TESTS_DIR / "northwind_neo4j.cypher",
+        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
         "smile_file": TESTS_DIR / "specific" / "northwind_neo4j_to_cass.smile",
         "source_type": SOURCE_TYPE_GRAPH,
         "target_type": SOURCE_TYPE_COLUMNAR,
         "display_name": "Northwind: Neo4j \u2192 Cassandra (Specific)",
     },
     "northwind_g2c_generalized": {
-        "source_file": TESTS_DIR / "northwind_neo4j.cypher",
+        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
         "smile_file": TESTS_DIR / "generalized" / "northwind_neo4j_to_cass.smile_gen",
         "source_type": SOURCE_TYPE_GRAPH,
         "target_type": SOURCE_TYPE_COLUMNAR,

@@ -65,6 +65,8 @@ class Cardinality(str, Enum):
     ONE_TO_ONE = "1..1"     # Required, exactly one
     ZERO_TO_MANY = "0..n"   # Optional, unlimited
     ONE_TO_MANY = "1..n"    # Required, at least one
+    MANY_TO_MANY = "n..m"   # Many on both ends (uncommon; M:N relationships
+                            # are normally resolved via a junction/edge/embedding)
 
     @classmethod
     def from_symbol(cls, s: str) -> 'Cardinality':
@@ -72,7 +74,8 @@ class Cardinality(str, Enum):
             "?": cls.ZERO_TO_ONE, "0..1": cls.ZERO_TO_ONE,
             "&": cls.ONE_TO_ONE, "1..1": cls.ONE_TO_ONE,
             "*": cls.ZERO_TO_MANY, "0..n": cls.ZERO_TO_MANY,
-            "+": cls.ONE_TO_MANY, "1..n": cls.ONE_TO_MANY
+            "+": cls.ONE_TO_MANY, "1..n": cls.ONE_TO_MANY,
+            "n..m": cls.MANY_TO_MANY
         }
         return mapping.get(s, cls.ONE_TO_ONE)
 
@@ -82,11 +85,12 @@ class Cardinality(str, Enum):
             self.ZERO_TO_ONE: (0, 1),
             self.ONE_TO_ONE: (1, 1),
             self.ZERO_TO_MANY: (0, -1),
-            self.ONE_TO_MANY: (1, -1)
+            self.ONE_TO_MANY: (1, -1),
+            self.MANY_TO_MANY: (0, -1)
         }[self]
 
     def is_multiple(self) -> bool:
-        return self in (self.ZERO_TO_MANY, self.ONE_TO_MANY)
+        return self in (self.ZERO_TO_MANY, self.ONE_TO_MANY, self.MANY_TO_MANY)
 
     def is_required(self) -> bool:
         return self in (self.ONE_TO_ONE, self.ONE_TO_MANY)
@@ -103,6 +107,7 @@ CARDINALITY_MAP: Dict[str, Cardinality] = {
     "ONE_TO_MANY": Cardinality.ONE_TO_MANY,
     "ZERO_TO_ONE": Cardinality.ZERO_TO_ONE,
     "ZERO_TO_MANY": Cardinality.ZERO_TO_MANY,
+    "MANY_TO_MANY": Cardinality.MANY_TO_MANY,
 }
 
 KEY_TYPE_MAP: Dict[str, Any] = {
@@ -256,7 +261,7 @@ class TypeMappings:
         'uuid':      PrimitiveType.UUID,
     }
 
-    # PrimitiveType -> Neo4j type string (for exporting Cypher)
+    # PrimitiveType -> Neo4j type string (for exporting GraphQL SDL)
     PRIMITIVE_TO_NEO4J = {
         PrimitiveType.STRING:    'string',
         PrimitiveType.TEXT:      'string',
@@ -971,6 +976,7 @@ class TraceOrigin(str, Enum):
     UNNESTED_EMBEDDED = "unnested_embedded"          # UNNEST extracting an embedded entity
     UNNESTED_SELF_REF = "unnested_self_ref"          # UNNEST preserving a self-referential Reference
     UNNESTED_EMBEDDED_REF = "unnested_embedded_ref"  # UNNEST preserving a cross-collection Reference
+    TRANSFORMED_EDGE = "transformed_edge"            # TRANSFORM ... INTO ENTITY (edge -> vertex); scoped to its edge name
 
 
 @dataclass

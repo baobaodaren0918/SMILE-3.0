@@ -116,55 +116,33 @@ def _normalize_sql_like(text: str, comment_prefix: str) -> str:
     return "\n".join(sorted(statements))
 
 
-_BLOCK_HEADER_RE = re.compile(r"^//\s*(node|relationship)\s*:", re.IGNORECASE)
-_CARD_RE = re.compile(r"^//\s*([\w-]*cardinality|per\s+\w+)\s*:", re.IGNORECASE)
-_PROPS_RE = re.compile(r"^//\s*properties\s*:\s*(.+)$", re.IGNORECASE)
+def _normalize_graph_schema(text: str) -> str:
+    """Graph schema: compare parsed structure, independent of SDL field order."""
+    from Schema.adapters import Neo4jAdapter
+    from core import db_to_dict
 
+    db = Neo4jAdapter().parse(text, "text_diff")
+    meta = db_to_dict(db)
+    meta.get("__db_meta__", {}).pop("db_name", None)
 
-def _normalize_cypher(text: str) -> str:
-    """Cypher: idempotent normalization. Splits on ``// Node:`` / ``// Relationship:``
-    headers regardless of case, so a first-pass output (which has been
-    lower-cased) still splits correctly on subsequent passes.
-    """
-    blocks: List[List[str]] = []
-    cur: List[str] = []
-    for raw in text.splitlines():
-        s = raw.strip()
-        if not s:
-            continue
-        if _BLOCK_HEADER_RE.match(s):
-            if cur:
-                blocks.append(cur)
-                cur = []
-        cur.append(s)
-    if cur:
-        blocks.append(cur)
+    def sort_dict_lists(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {k: sort_dict_lists(v) for k, v in value.items()}
+        if isinstance(value, list):
+            items = [sort_dict_lists(v) for v in value]
+            if all(isinstance(v, dict) for v in items):
+                return sorted(items, key=lambda v: json.dumps(v, sort_keys=True))
+            return items
+        return value
 
-    # Drop any preamble block that is not anchored to a Node / Relationship
-    # heading — those are file-level header comments.
-    blocks = [b for b in blocks if b and _BLOCK_HEADER_RE.match(b[0])]
-
-    normalized: List[str] = []
-    for blk in blocks:
-        out: List[str] = []
-        for l in blk:
-            s = re.sub(r"\s+", " ", l).lower()
-            if _CARD_RE.match(s):
-                continue
-            m = _PROPS_RE.match(s)
-            if m:
-                items = sorted(p.strip() for p in m.group(1).split(","))
-                s = f"// properties: {', '.join(items)}"
-            out.append(s)
-        normalized.append("\n".join(out))
-    return "\n\n".join(sorted(normalized))
+    return json.dumps(sort_dict_lists(meta), sort_keys=True, indent=2)
 
 
 _NORMALIZERS = {
     SOURCE_TYPE_DOCUMENT:   _normalize_json,
     SOURCE_TYPE_RELATIONAL: lambda t: _normalize_sql_like(t, "--"),
     SOURCE_TYPE_COLUMNAR:   lambda t: _normalize_sql_like(t, "--"),
-    SOURCE_TYPE_GRAPH:      _normalize_cypher,
+    SOURCE_TYPE_GRAPH:      _normalize_graph_schema,
 }
 
 

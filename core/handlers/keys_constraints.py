@@ -10,6 +10,7 @@ from Schema.unified_meta_schema import (
     Reference, Edge, Cardinality,
     PrimitiveDataType, PrimitiveType,
     CARDINALITY_MAP, KEY_TYPE_MAP, TYPE_STR_MAP,
+    TraceOrigin,
 )
 from parser.params import (
     OperationResult,
@@ -907,7 +908,7 @@ class KeysConstraintsHandlersMixin:
                 target_end_cardinality = CARDINALITY_MAP.get(params.cardinality, Cardinality.ZERO_TO_MANY)
 
             recovered_source, recovered_target = self._consume_deleted_fk_for_edge(
-                source_entity_name, target_entity_name
+                source_entity_name, target_entity_name, edge_name=name
             )
             if recovered_source is not None and not script_set_target_end_cardinality:
                 target_end_cardinality = recovered_source
@@ -944,6 +945,26 @@ class KeysConstraintsHandlersMixin:
             edge_entity = self._get_entity(name, "TRANSFORM")
             if not edge_entity or edge_entity.entity_kind != EntityKind.EDGE:
                 return OperationResult.skipped("transform: precondition not met")
+
+            # Remember the edge's bidirectional cardinality (scoped to this
+            # edge name via the TRANSFORMED_EDGE origin) BEFORE nulling the
+            # fields, so a later VERTEX->EDGE TRANSFORM of the same name can
+            # recover it. The scoping (origin + ref_name match in
+            # _consume_deleted_fk_for_edge) stops an unrelated ADD_ENTITY /
+            # TRANSFORM on the same endpoint pair from claiming this cardinality.
+            # Skip the write when there is nothing to remember (both ends None):
+            # an all-None trace would only ever yield the same defaults a missing
+            # trace does, so omitting it keeps the trace list free of dead entries.
+            if (edge_entity.edge_target_end_cardinality is not None
+                    or edge_entity.edge_source_end_cardinality is not None):
+                self._remember_relationship_trace(
+                    holder=edge_entity.source_entity,
+                    ref_name=name,
+                    target=edge_entity.target_entity,
+                    target_end_cardinality=edge_entity.edge_target_end_cardinality,
+                    source_end_cardinality=edge_entity.edge_source_end_cardinality,
+                    origin=TraceOrigin.TRANSFORMED_EDGE,
+                )
 
             # Remove Edge from source entity's relationships
             if edge_entity.source_entity:

@@ -18,7 +18,7 @@ CAST_ENTITY orders TO DOCUMENT
 CAST_ENTITY customers TO DOCUMENT
 
 -- ============================================
--- Source: 7 nodes + 7 relationships — see northwind_neo4j.cypher
+-- Source: 7 nodes + 7 relationships — see northwind_neo4j.graphql
 -- Target: 2 collections (orders + customers, max L3)
 --   Root 1: orders { _id, ..., customer_id (REF), employee{address{}}, shipper{}, ship_destination{},
 --                    details[]{ product{ category{}, supplier{flat addr} } } }

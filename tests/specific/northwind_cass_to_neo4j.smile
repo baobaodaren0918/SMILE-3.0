@@ -1,6 +1,6 @@
 -- SMILE Northwind: Cassandra -> Neo4j (Specific Operations Version)
 -- Cross-model Schema Migration: Columnar -> Graph
--- Direction: northwind_cassandra.cql -> northwind_neo4j.cypher
+-- Direction: northwind_cassandra.cql -> northwind_neo4j.graphql
 --
 -- Pipeline: Source Cassandra -> Reverse Engineering -> Meta V1 (Columnar)
 --           -> SMILE Operations (this script) -> Meta V2 (Graph)
@@ -167,6 +167,8 @@ CAST_CONSTRAINT categories.category_id TO NODE KEY
 CAST_CONSTRAINT suppliers.supplier_id TO NODE KEY
 CAST_CONSTRAINT shippers.shipper_id TO NODE KEY
 CAST_CONSTRAINT employees.employee_id TO NODE KEY
+-- employees is also a Person node (Neo4j multi-label)
+ADD_LABEL Person TO employees
 CAST_CONSTRAINT customers.customer_id TO NODE KEY
 -- Complex tables: staging UNIQUE constraint (from ADD_UNIQUE_KEY) -> NODE KEY
 CAST_CONSTRAINT products.product_id TO NODE KEY
@@ -193,11 +195,11 @@ CAST_CONSTRAINT orders.order_id TO NODE KEY
 -- ============================================
 
 -- ============================================
--- Operation Summary (30 steps, 9 operation types):
+-- Operation Summary (31 steps, 10 operation types):
 --   DELETE_PARTITION_KEY:  3    DELETE_CLUSTERING_KEY: 3
 --   ADD_UNIQUE_KEY:       2    ADD_CONSTRAINT(REF):   6
 --   DELETE_PROPERTY:       8    ADD_ENTITY(edge):      6
 --   TRANSFORM:             1    RENAME_ENTITY:         1
---   CAST_CONSTRAINT:       5
+--   CAST_CONSTRAINT:       5    ADD_LABEL:             1
 --   EntityKind auto-convert: WIDE_COLUMN_TABLE -> VERTEX (all 8 entities)
 -- ============================================
