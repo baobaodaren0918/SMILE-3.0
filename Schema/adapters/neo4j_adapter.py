@@ -447,8 +447,10 @@ class Neo4jAdapter(DatabaseAdapter):
         return {
             PrimitiveType.STRING: "String",
             PrimitiveType.INTEGER: "Int",
+            PrimitiveType.LONG: "Int",       # Neo4j Int is 64-bit, covers LONG
             PrimitiveType.FLOAT: "Float",
             PrimitiveType.DOUBLE: "Float",
+            PrimitiveType.DECIMAL: "Float",  # no decimal scalar in GraphQL SDL
             PrimitiveType.BOOLEAN: "Boolean",
             PrimitiveType.DATE: "Date",
             PrimitiveType.TIMESTAMP: "DateTime",
