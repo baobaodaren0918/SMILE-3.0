@@ -81,7 +81,17 @@ def normalize_document_full_paths(db: Database) -> None:
     # BFS rename map: old_full_path -> new_full_path.
     rename_map: Dict[str, str] = {}
 
+    # Guard against malformed embedded chains that loop back onto an ancestor
+    # (a child aggregating one of its own forebears). Well-formed document
+    # trees never do this, but without a visited set such a cycle would recurse
+    # until the stack blows. We track entities by identity so a legitimately
+    # repeated simple name on disjoint branches is not mistaken for a cycle.
+    visited: set = set()
+
     def _walk(parent_entity, parent_path: str) -> None:
+        if id(parent_entity) in visited:
+            return
+        visited.add(id(parent_entity))
         for rel in parent_entity.relationships:
             if not isinstance(rel, Embedded):
                 continue

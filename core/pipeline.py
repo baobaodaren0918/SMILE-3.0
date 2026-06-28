@@ -130,7 +130,7 @@ class SchemaTransformer(
 
 def run_load(source_file, smile_file, source_type: str):
     """Step 1 — Resolve adapters, read source schema + SMILE script, parse the"""
-    from parser.factory import parse_smile_auto
+    from parser.factory import detect_grammar_type, parse_smile_text
 
     source_adapter = ADAPTER_REGISTRY.get(source_type)
     if not source_adapter:
@@ -143,7 +143,10 @@ def run_load(source_file, smile_file, source_type: str):
     source_db = source_adapter.load_from_file(str(source_file), "source")
     meta_v1_db = copy.deepcopy(source_db)
 
-    context, operations, errors = parse_smile_auto(str(smile_file))
+    # Parse the already-read SMILE text (grammar picked by extension) instead of
+    # re-reading the file inside parse_smile_auto.
+    context, operations, errors = parse_smile_text(
+        smile_content, detect_grammar_type(str(smile_file)))
     return source_adapter, source_db, meta_v1_db, smile_content, raw_source, operations, errors
 
 
@@ -195,8 +198,13 @@ def run_apply(transformer: 'SchemaTransformer', operations) -> tuple:
 
         new_count = len(transformer.database.entity_types)
         if status == "skipped":
-            # Handler returned via early-return guard without mutating —
-            # reuse prev_snapshot to avoid a redundant db_to_dict serialization.
+            # CONTRACT: a handler that returns a falsy/skipped result MUST NOT
+            # have mutated transformer.database. We reuse prev_snapshot here to
+            # avoid a redundant db_to_dict serialization, which is only correct
+            # under that invariant. If a future handler mutates and then skips,
+            # this snapshot — and every subsequent op's diff — goes stale. Any
+            # handler with a precondition must validate BEFORE mutating (see
+            # ADD_KEY's validate-then-apply ordering for the canonical example).
             after_snapshot = prev_snapshot
         else:
             after_snapshot = db_to_dict(transformer.database)

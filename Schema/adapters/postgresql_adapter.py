@@ -635,7 +635,13 @@ class PostgreSQLAdapter(DatabaseAdapter):
         ref_info = None
         ref_match = re.search(r'REFERENCES\s+(\w+)\s*\((\w+)\)', constraints, re.IGNORECASE)
         if ref_match:
-            ref_info = (col_name, ref_match.group(1).lower(), ref_match.group(2))
+            # Lower-case BOTH the target table and the target column: property
+            # names are stored lower-cased (see col_name above) and the
+            # table-level FK path lower-cases its target columns too. Without
+            # this, REFERENCES Customers(Customer_ID) would fail to match the
+            # stored "customer_id" UNIQUE property and silently fall back to the
+            # target's PK.
+            ref_info = (col_name, ref_match.group(1).lower(), ref_match.group(2).lower())
 
         # Column-level CHECK clause: ``CHECK (<expr>)``. The expression is
         # parsed via the same path as table-level CHECK so the AST shape is
@@ -889,7 +895,12 @@ class PostgreSQLAdapter(DatabaseAdapter):
     @classmethod
     def _sort_entities_by_dependency(cls, database: Database) -> list:
         """Sort entities so that referenced tables come before referencing tables."""
-        entities = list(database.entity_types.values())
+        # Defensive: a correct pipeline normalizes every exportable entity to a
+        # relational kind before reaching here, but skip EDGE/EMBEDDED kinds
+        # outright — neither maps to a CREATE TABLE (an EDGE carries no columns,
+        # an EMBEDDED is a sub-document), so emitting one would be malformed DDL.
+        entities = [e for e in database.entity_types.values()
+                    if e.entity_kind not in (EntityKind.EDGE, EntityKind.EMBEDDED)]
 
         dependencies = {}
         for entity in entities:

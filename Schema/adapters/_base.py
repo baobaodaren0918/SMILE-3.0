@@ -9,10 +9,15 @@ from Schema.unified_meta_schema import Database
 class DatabaseAdapter(ABC):
     """Common interface every database adapter must implement."""
 
-    @classmethod
+    @staticmethod
     @abstractmethod
-    def load_from_file(cls, file_path: str, db_name: Optional[str] = None) -> Database:
-        """Read a native schema file (DDL / JSON / GraphQL SDL / CQL) and return a Database."""
+    def load_from_file(file_path: str, db_name: Optional[str] = None) -> Database:
+        """Read a native schema file (DDL / JSON / GraphQL SDL / CQL) and return a Database.
+
+        Declared as a ``@staticmethod`` to match all four concrete adapters,
+        which take no ``cls``/``self`` and resolve the paradigm from the file
+        content, not the class.
+        """
         ...
 
     @classmethod

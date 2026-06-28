@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from antlr4 import FileStream, CommonTokenStream, ParseTreeWalker
+from antlr4 import InputStream, CommonTokenStream, ParseTreeWalker
 from antlr4.error.ErrorListener import ErrorListener
 
 # Import both grammars
@@ -70,11 +70,14 @@ def get_grammar_info(file_path: str) -> dict:
     }
 
 
-def parse_smile_auto(file_path: str):
-    """Automatically parse a SMILE file using the appropriate grammar."""
-    # Detect grammar type
-    grammar_type = detect_grammar_type(file_path)
+def parse_smile_text(text: str, grammar_type: str):
+    """Parse in-memory SMILE script text using the named grammar.
 
+    Returns ``(context, operations, errors)`` exactly like ``parse_smile_auto``.
+    This is the single lex→parse→walk implementation shared by the file-based
+    path (``parse_smile_auto``) and the web server's run-script endpoint, so the
+    two no longer maintain divergent copies of the boilerplate.
+    """
     # Get parser components
     LexerClass, ParserClass, _ = get_parser_components(grammar_type)
 
@@ -86,8 +89,8 @@ def parse_smile_auto(file_path: str):
     else:
         raise ValueError(f"Unknown grammar type: {grammar_type}. Expected 'specific' or 'generalized'")
 
-    # Create input stream
-    input_stream = FileStream(file_path, encoding='utf-8')
+    # Create input stream from in-memory text
+    input_stream = InputStream(text)
 
     # Create lexer
     lexer = LexerClass(input_stream)
@@ -114,3 +117,11 @@ def parse_smile_auto(file_path: str):
     walker.walk(listener, tree)
 
     return listener.context, listener.operations, error_listener.errors
+
+
+def parse_smile_auto(file_path: str):
+    """Automatically parse a SMILE file using the appropriate grammar."""
+    grammar_type = detect_grammar_type(file_path)
+    with open(file_path, 'r', encoding='utf-8') as f:
+        text = f.read()
+    return parse_smile_text(text, grammar_type)

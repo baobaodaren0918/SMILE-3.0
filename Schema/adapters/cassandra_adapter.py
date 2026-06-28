@@ -301,6 +301,12 @@ class CassandraAdapter(DatabaseAdapter):
         lines.append("")
 
         for entity in database.entity_types.values():
+            # Defensive: skip EDGE/EMBEDDED kinds — neither maps to a CQL table
+            # (an EDGE carries no columns, an EMBEDDED is a sub-document). A
+            # correct pipeline normalizes these away before export; this guards
+            # against a malformed CREATE TABLE if one ever survives.
+            if entity.entity_kind in (EntityKind.EDGE, EntityKind.EMBEDDED):
+                continue
             ddl = cls._export_entity_to_cql(entity)
             lines.append(ddl)
             lines.append("")

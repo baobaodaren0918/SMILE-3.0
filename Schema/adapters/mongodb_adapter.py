@@ -359,14 +359,6 @@ class MongoDBAdapter(DatabaseAdapter):
         return roots
 
     @classmethod
-    def _find_root_entity(cls, database: Database) -> str:
-        """Single-root convenience wrapper preserved for callers that pre-date"""
-        roots = cls._find_root_entities(database)
-        if roots:
-            return roots[0]
-        return next(iter(database.entity_types.keys()), None)
-
-    @classmethod
     def _export_entity_to_schema(cls, database: Database, entity: EntityType, is_root: bool = False) -> Dict[str, Any]:
         """Export a single entity to MongoDB JSON Schema format."""
         from ..unified_meta_schema import Embedded, Cardinality

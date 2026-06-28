@@ -202,10 +202,6 @@ class Neo4jAdapter(DatabaseAdapter):
         return PrimitiveDataType(primitive_type=primitive)
 
     @staticmethod
-    def _looks_like_graphql(text: str) -> bool:
-        return bool(re.search(r'(?m)^\s*(directive|scalar|enum|type|interface)\b', text))
-
-    @staticmethod
     def _strip_graphql_comments(text: str) -> str:
         lines = []
         for raw in text.splitlines():

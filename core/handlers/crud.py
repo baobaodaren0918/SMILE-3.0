@@ -118,15 +118,18 @@ class CRUDHandlersMixin:
             # No edge_name passed: ADD_ENTITY deliberately does NOT consume
             # TRANSFORMED_EDGE traces (those are scoped to a TRANSFORM round-trip
             # of the same edge name).
-            recovered_source, recovered_target = self._consume_deleted_fk_for_edge(
+            # NB: _consume_deleted_fk_for_edge returns (target_end, source_end)
+            # in that order — keep the unpacking names aligned with the contract
+            # so a future rename can't silently swap the two Edge ends.
+            recovered_target_end, recovered_source_end = self._consume_deleted_fk_for_edge(
                 source_entity, target_entity
             )
-            if recovered_source is not None and not script_set_target_end_cardinality:
-                target_end_cardinality = recovered_source
-            recovered_target = self._default_source_end_cardinality(recovered_target)
+            if recovered_target_end is not None and not script_set_target_end_cardinality:
+                target_end_cardinality = recovered_target_end
+            recovered_source_end = self._default_source_end_cardinality(recovered_source_end)
 
             new_entity.edge_target_end_cardinality = target_end_cardinality
-            new_entity.edge_source_end_cardinality = recovered_target
+            new_entity.edge_source_end_cardinality = recovered_source_end
 
             # Validate source and target exist
             source_ent = self.database.get_entity_type(source_entity)
@@ -144,7 +147,7 @@ class CRUDHandlersMixin:
                 source_entity=source_entity,
                 target_entity=target_entity,
                 target_end_cardinality=target_end_cardinality,
-                source_end_cardinality=recovered_target,
+                source_end_cardinality=recovered_source_end,
             )
             source_ent.add_relationship(edge)
 
