@@ -47,7 +47,6 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(content)
             elif self.path.startswith('/static/'):
-                # Serve files from the static/ directory next to this script.
                 # Path traversal is blocked: only basename + safe extensions allowed.
                 rel = self.path[len('/static/'):].split('?')[0].split('#')[0]
                 if '..' in rel or rel.startswith('/') or '\\' in rel:
@@ -66,10 +65,8 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(data)
             elif self.path.startswith('/api/schemas'):
-                # Returns the raw text of each native schema file PLUS the
-                # parsed Meta V1 dict for each one, so the Source Schemas
-                # tab can render its subtitles + structures dynamically and
-                # never disagree with the actual schema files on disk.
+                # Return raw text + parsed Meta V1 per schema file so the Source
+                # Schemas tab renders dynamically and never disagrees with disk.
                 result = {"parsed": {}}
                 for key, fpath in NORTHWIND_SCHEMA_FILES.items():
                     try:
@@ -89,7 +86,6 @@ class SMILEHandler(SimpleHTTPRequestHandler):
 
                 self._send_json(result, cache_control='no-cache')
             elif self.path == '/api/operations_spec':
-                # Single source of truth for the editor's autocomplete
                 spec_path = Path(__file__).parent / 'grammar' / 'smile_operations.json'
                 try:
                     payload = json.loads(spec_path.read_text(encoding='utf-8'))
@@ -121,10 +117,8 @@ class SMILEHandler(SimpleHTTPRequestHandler):
 
                 try:
                     if 'multipart/form-data' in content_type:
-                        # File upload — parse multipart manually (cgi removed in Python 3.13)
                         text, db_type = _parse_multipart_inspect(body, content_type)
                     else:
-                        # JSON body: {"text": "...", "db_type": "relational"}
                         data = json.loads(body.decode('utf-8'))
                         text = data.get('text', '')
                         db_type = data.get('db_type', '')
@@ -152,11 +146,18 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                     if not target_db_type:
                         raise ValueError("target_db_type is required")
 
-                    # Parse source schema → Database
                     src_db = _parse_schema_text(source_text, source_db_type, name='source')
                     src_count = len(src_db.entity_types)
+                    # Adapters tolerate unrecognised input by returning an empty
+                    # Database rather than raising. Catch that here so the user
+                    # gets a clear "nothing parsed" message instead of a
+                    # confusing all-green run over zero entities.
+                    if src_count == 0:
+                        raise ValueError(
+                            "The source schema parsed to 0 entities. Check that the "
+                            "pasted/uploaded text is valid and matches the selected "
+                            f"source database type ({source_db_type}).")
 
-                    # Parse SMILE script in-memory under requested grammar
                     from antlr4 import InputStream, CommonTokenStream, ParseTreeWalker
                     from parser.factory import get_parser_components, SyntaxErrorListener
                     from parser.listeners import SMILESpecificListener, SMILEGeneralizedListener
@@ -172,9 +173,8 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                     parser.removeErrorListeners(); parser.addErrorListener(err)
                     tree = parser.migration()
                     if err.errors:
-                        # Parse failed: validation can't run, but surface
-                        # ``unverifiable`` placeholders so the frontend gets a
-                        # consistent validation_* shape across endpoints.
+                        # Parse failed: emit ``unverifiable`` placeholders so the
+                        # frontend gets a consistent validation_* shape across endpoints.
                         skipped = {"passed": None,
                                    "summary": "Other reasons (parse failed)",
                                    "details": {}}
@@ -196,22 +196,17 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                         walker = ParseTreeWalker()
                         walker.walk(listener, tree)
                         operations = listener.operations
-                        # Apply + export through the SAME helpers run_migration() uses
-                        # so the canned-migration path and the user's Run-button path
-                        # share one implementation.
+                        # Reuse run_migration()'s apply/export helpers so the canned
+                        # and Run-button paths share one implementation.
                         from core import SchemaTransformer, run_apply, run_export
-                        # Resolve the target model up front and pass it to the
-                        # transformer so target-model guards apply on this path too
-                        # (e.g. NEST is document-only), matching run_migration().
+                        # Resolve the target model up front so target-model guards
+                        # apply here too (e.g. NEST is document-only).
                         tgt_type_resolved = _resolve_db_type(target_db_type)
                         transformer = SchemaTransformer(src_db, target_type=tgt_type_resolved)
                         ops_detail, applied, skipped_ct, error_ct = run_apply(transformer, operations)
-                        # Separate deliberate skips (handler returned OperationResult.skipped)
-                        # from handler bugs (caught exception). Conflating them under a single
-                        # "skipped" label hides real defects from the user — e.g. a typo in a
-                        # custom handler would show up as "Skipped: step N" with no clue it's
-                        # actually a bug. run_apply already counts the two separately; this
-                        # endpoint surfaces them as separate response fields.
+                        # Surface deliberate skips and handler errors as separate
+                        # fields; conflating them would hide real defects (a handler
+                        # bug would masquerade as a harmless "skipped" step).
                         skipped = [f"step {d['step']}: {d['type']}" for d in ops_detail
                                    if d['status'] == 'skipped']
                         errors = [f"step {d['step']}: {d['type']} — {d.get('reason', '')}"
@@ -230,26 +225,17 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                             result_db = transformer.database
                             exported_text = f"-- export() raised: {ex}\n"
 
-                        # Build a Meta V2 summary in the same shape as /api/inspect
-                        # so the frontend can render the same kind of entity table.
                         from schema_inspector import _build_summary
                         meta_v2_summary = _build_summary(result_db)
 
-                        # Run the same Layer 1 + Layer 2 + blame validation that
-                        # /api/migrate (run_migration) runs, so the canned-Northwind
-                        # path and the user's Run-button path expose an identical
-                        # response shape. For arbitrary user-pasted scripts there
-                        # is no registered ground-truth target file, so the
-                        # validation legitimately reports ``unverifiable`` — that
-                        # is itself useful information (the frontend can render
-                        # the validation panel uniformly instead of branching on
-                        # endpoint identity).
+                        # Run the same validation as /api/migrate for an identical
+                        # response shape. User-pasted scripts have no ground-truth
+                        # target file, so ``unverifiable`` is the legitimate (and
+                        # still useful) verdict, letting the panel render uniformly.
                         from core import db_to_dict
-                        # Layer 0 needs ``execution_stats`` and ``operations_detail``
-                        # to derive its pass/fail verdict and the failed-step
-                        # listing the frontend renders. Without them Layer 0
-                        # would always pass on a zero-op assumption — masking
-                        # genuine handler errors / skips behind a green badge.
+                        # Layer 0 needs ``execution_stats`` + ``operations_detail`` to
+                        # derive its verdict; without them it would pass on a zero-op
+                        # assumption, hiding genuine handler errors/skips.
                         validation_input = {
                             "result": db_to_dict(result_db),
                             "exported_target": exported_text,
@@ -260,9 +246,8 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                                 "error": error_ct,
                             },
                             "operations_detail": ops_detail,
-                            # Live Database for Layer-0.5 integrity scan;
-                            # validate_pipeline consumes and the entry is dropped
-                            # before serialization. Matches the run_migration path.
+                            # Live Database for the Layer-0.5 integrity scan;
+                            # validate_pipeline consumes and drops it before serialization.
                             "__result_db": result_db,
                         }
                         try:
@@ -404,7 +389,6 @@ def _parse_schema_text(text: str, db_type: str, name: str):
 
 def _parse_multipart_inspect(body: bytes, content_type: str):
     """Manually parse multipart/form-data for /api/inspect (cgi removed in 3.13)."""
-    # Extract boundary from "multipart/form-data; boundary=..."
     boundary = None
     for piece in content_type.split(';'):
         piece = piece.strip()
@@ -420,17 +404,14 @@ def _parse_multipart_inspect(body: bytes, content_type: str):
     for part in parts:
         if not part or part in (b'--\r\n', b'--'):
             continue
-        # Strip leading CRLF after delimiter
         part = part.lstrip(b'\r\n')
         head_end = part.find(b'\r\n\r\n')
         if head_end < 0:
             continue
         headers_blob = part[:head_end].decode('utf-8', errors='replace')
         payload = part[head_end + 4:]
-        # Strip trailing CRLF before next boundary
         if payload.endswith(b'\r\n'):
             payload = payload[:-2]
-        # Read field name from Content-Disposition
         m = re.search(r'name="([^"]+)"', headers_blob)
         if not m:
             continue
@@ -453,9 +434,8 @@ def _validate_smile_text(text: str, syntax: str) -> list:
     input_stream = InputStream(text or '')
     lexer = LexerClass(input_stream)
     err = SyntaxErrorListener(syntax)
-    # Attach the listener to BOTH lexer and parser so the Validate button
-    # catches lexer-level errors (illegal chars / unrecognised tokens) too,
-    # matching parse_smile_auto's behaviour and the Run path.
+    # Attach to BOTH lexer and parser so lexer-level errors (illegal chars /
+    # unrecognised tokens) are also caught, matching parse_smile_auto.
     lexer.removeErrorListeners()
     lexer.addErrorListener(err)
     token_stream = CommonTokenStream(lexer)

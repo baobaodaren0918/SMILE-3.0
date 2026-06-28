@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from Schema.unified_meta_schema import (
-    Cardinality, Database, EntityType, Property,
+    Cardinality, Database, EntityType, EntityKind, Edge, Property,
     RelationshipTrace, TraceOrigin,
 )
 
@@ -239,6 +239,35 @@ class SchemaTransformerBase:
                 "prefix": None,
                 "generated": False,
             }
+
+    def _remap_entity_references(self, old_name: str, new_name: str) -> None:
+        """Rewrite every cross-entity reference from ``old_name`` to
+        ``new_name`` in place: ``Reference.refs_to``, ``Embedded.aggregates``,
+        ``Edge`` endpoints carried on relationships, and the source/target of
+        EDGE-kind entities.
+
+        Shared by RENAME_ENTITY and MERGE — the two operations that *retarget*
+        references to a surviving entity. DELETE_ENTITY does NOT use this: it
+        *removes* references (and prunes orphaned FK constraints) rather than
+        repointing them, a different traversal kept local to that handler.
+        """
+        for other_entity in self.database.entity_types.values():
+            for rel in other_entity.relationships:
+                if hasattr(rel, 'refs_to') and rel.refs_to == old_name:
+                    rel.refs_to = new_name
+                if hasattr(rel, 'aggregates') and rel.aggregates == old_name:
+                    rel.aggregates = new_name
+                if isinstance(rel, Edge):
+                    if rel.source_entity == old_name:
+                        rel.source_entity = new_name
+                    if rel.target_entity == old_name:
+                        rel.target_entity = new_name
+        for e in self.database.entity_types.values():
+            if e.entity_kind == EntityKind.EDGE:
+                if e.source_entity == old_name:
+                    e.source_entity = new_name
+                if e.target_entity == old_name:
+                    e.target_entity = new_name
 
     # ── Helper utilities (shared by multiple handlers) ──────────────────
     def _get_entity(self, name: str, op_name: str = "") -> Optional[EntityType]:

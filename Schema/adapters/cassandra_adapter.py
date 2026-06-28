@@ -4,7 +4,8 @@ from typing import Dict, List, Optional, Tuple
 from ..unified_meta_schema import (
     Database, DatabaseType, EntityType, EntityKind, Property,
     UniqueConstraint, UniqueProperty, PKTypeEnum,
-    PrimitiveDataType, PrimitiveType, Cardinality, TypeMappings
+    PrimitiveDataType, PrimitiveType, Cardinality, TypeMappings,
+    ListDataType, SetDataType, MapDataType, TupleDataType,
 )
 from ._base import DatabaseAdapter
 
@@ -12,35 +13,19 @@ from ._base import DatabaseAdapter
 class CassandraAdapter(DatabaseAdapter):
     """Adapter to parse Cassandra CQL DDL and create Unified Meta Schema."""
 
-    # =========================================================================
-    # TYPE MAPPING (from centralized TypeMappings)
-    # =========================================================================
     TYPE_MAP = TypeMappings.CASSANDRA_TO_PRIMITIVE
     REVERSE_TYPE_MAP = TypeMappings.PRIMITIVE_TO_CASSANDRA
 
-    # =========================================================================
-    # INITIALIZATION
-    # =========================================================================
-
     def __init__(self):
-        """Initialize adapter with empty state."""
         self.database: Optional[Database] = None
-
-    # =========================================================================
-    # PARSE METHODS (CQL DDL -> Unified Meta Schema)
-    # =========================================================================
 
     def parse(self, cql_content: str, db_name: str = "database") -> Database:
         """Parse CQL DDL content and return Database object."""
         self.database = Database(db_name=db_name, db_type=DatabaseType.COLUMNAR)
 
-        # Step 1: Remove comments (helper inherited from DatabaseAdapter)
         cql = self._remove_sql_comments(cql_content)
-
-        # Step 2: Extract CREATE TABLE statements
         tables = self._extract_create_tables(cql)
 
-        # Step 3: Parse each table
         for table_name, table_body, with_clause in tables:
             entity = self._parse_table(table_name, table_body, with_clause)
             self.database.add_entity_type(entity)
@@ -48,16 +33,12 @@ class CassandraAdapter(DatabaseAdapter):
         return self.database
 
     def _extract_create_tables(self, cql: str) -> List[Tuple[str, str, str]]:
-        """Extract CREATE TABLE statements from CQL DDL."""
-        # Match CREATE TABLE with optional IF NOT EXISTS. The WITH clause is
-        # captured in its own group (group 3) so downstream parsing can read
-        # the directives it cares about (CLUSTERING ORDER BY).
-        pattern = re.compile(
-            r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?(\w+)\s*\((.*?)\)\s*(?:WITH\s+(.*?))?;',
-            re.DOTALL | re.IGNORECASE
-        )
-        matches = pattern.findall(cql)
-        return matches
+        """Extract CREATE TABLE statements from CQL DDL (quote/paren-aware).
+
+        Returns ``(table_name, body, with_clause)``; the WITH clause feeds
+        CLUSTERING ORDER BY parsing downstream.
+        """
+        return self._scan_create_tables(cql)
 
     def _parse_table(self, table_name: str, table_body: str,
                      with_clause: str = "") -> EntityType:
@@ -67,12 +48,11 @@ class CassandraAdapter(DatabaseAdapter):
             entity_kind=EntityKind.WIDE_COLUMN_TABLE
         )
 
-        # Split by comma, but handle parentheses in type definitions and PK clauses
-        columns = self._split_columns(table_body)
+        # Split by comma, handling parentheses in PK clauses AND angle brackets
+        # in collection types (map<text, int>) — see _split_columns(track_angle).
+        columns = self._split_columns(table_body, track_angle=True)
 
-        # Track inline PRIMARY KEY (single column with "PRIMARY KEY" suffix)
         inline_pk_col: Optional[str] = None
-        # Track table-level PRIMARY KEY clause
         table_pk_clause: Optional[str] = None
 
         for col_def in columns:
@@ -82,28 +62,20 @@ class CassandraAdapter(DatabaseAdapter):
 
             upper = col_def.upper().strip()
 
-            # Detect table-level PRIMARY KEY clause
-            # e.g., "PRIMARY KEY (user_id)" or "PRIMARY KEY ((user_id), activity_time)"
             if upper.startswith('PRIMARY KEY'):
                 table_pk_clause = col_def
                 continue
 
-            # Parse column definition
             attr, is_inline_pk = self._parse_column(col_def)
             if attr:
                 entity.add_property(attr)
                 if is_inline_pk:
                     inline_pk_col = attr.name
 
-        # Build primary key constraint
         if table_pk_clause:
-            # Table-level PRIMARY KEY clause
-            # Parse partition and clustering columns
             partition_cols, clustering_cols = self._parse_primary_key_clause(table_pk_clause)
             self._build_pk_constraint(entity, partition_cols, clustering_cols)
         elif inline_pk_col:
-            # Inline PRIMARY KEY (single column)
-            # e.g., "user_id UUID PRIMARY KEY"
             attr = entity.get_property(inline_pk_col)
             if attr:
                 attr.is_key = True
@@ -135,7 +107,6 @@ class CassandraAdapter(DatabaseAdapter):
         if not m:
             return
 
-        # Map column name -> 'asc' / 'desc'
         order_map: Dict[str, str] = {}
         for part in m.group(1).split(','):
             tokens = part.strip().split()
@@ -164,30 +135,25 @@ class CassandraAdapter(DatabaseAdapter):
 
     def _parse_column(self, col_def: str) -> Tuple[Optional[Property], bool]:
         """Parse a single column definition."""
-        # Normalize whitespace (handle multi-line definitions)
         col_def = ' '.join(col_def.split())
 
-        # Check for inline PRIMARY KEY
-        # e.g., "user_id UUID PRIMARY KEY"
         is_inline_pk = bool(re.search(r'PRIMARY\s+KEY', col_def, re.IGNORECASE))
 
-        # Remove PRIMARY KEY from the definition for cleaner parsing
         clean_def = re.sub(r'\s*PRIMARY\s+KEY\s*', ' ', col_def, flags=re.IGNORECASE).strip()
 
-        # Pattern: column_name TYPE
-        # Handles: "user_id UUID", "name TEXT", "value DOUBLE"
-        match = re.match(r'^(\w+)\s+(\w+)', clean_def.strip(), re.IGNORECASE)
+        # Handles primitives ("user_id UUID", "value DOUBLE") AND collection
+        # types ("tags list<text>", "prefs map<text, int>"), so the type is
+        # the whole remainder of the definition, not just the first word.
+        match = re.match(r'^(\w+)\s+(.+?)\s*$', clean_def.strip(), re.IGNORECASE | re.DOTALL)
 
         if not match:
             return None, False
 
         col_name = match.group(1).lower()
-        col_type = match.group(2).upper()
+        col_type = match.group(2).strip()
 
-        # Determine data type
         data_type = self._parse_data_type(col_type)
 
-        # is_key will be set later when building the PK constraint
         attr = Property(
             name=col_name,
             data_type=data_type,
@@ -197,14 +163,60 @@ class CassandraAdapter(DatabaseAdapter):
 
         return attr, is_inline_pk
 
-    def _parse_data_type(self, type_name: str) -> PrimitiveDataType:
-        """Parse CQL type to PrimitiveDataType."""
-        primitive = self.TYPE_MAP.get(type_name, PrimitiveType.STRING)
+    def _parse_data_type(self, type_name: str):
+        """Parse a CQL type expression into a DataType.
+
+        Handles primitives plus the CQL collection types ``list<T>``,
+        ``set<T>``, ``map<K, V>``, ``tuple<...>`` and the ``frozen<...>``
+        wrapper (which is unwrapped — frozenness is a storage detail not
+        modelled in the meta-schema). Unknown types fall back to STRING.
+        """
+        s = type_name.strip()
+        low = s.lower()
+        if low.startswith('frozen<') and s.endswith('>'):
+            return self._parse_data_type(s[len('frozen<'):-1])
+        if low.startswith('list<') and s.endswith('>'):
+            return ListDataType(element_type=self._parse_data_type(s[len('list<'):-1]))
+        if low.startswith('set<') and s.endswith('>'):
+            return SetDataType(element_type=self._parse_data_type(s[len('set<'):-1]))
+        if low.startswith('map<') and s.endswith('>'):
+            args = self._split_type_args(s[len('map<'):-1])
+            if len(args) == 2:
+                return MapDataType(
+                    key_type=self._parse_data_type(args[0]),
+                    value_type=self._parse_data_type(args[1]),
+                )
+        if low.startswith('tuple<') and s.endswith('>'):
+            args = self._split_type_args(s[len('tuple<'):-1])
+            return TupleDataType(elem_types=[self._parse_data_type(a) for a in args])
+        primitive = self.TYPE_MAP.get(s.upper(), PrimitiveType.STRING)
         return PrimitiveDataType(primitive_type=primitive)
+
+    @staticmethod
+    def _split_type_args(inner: str) -> List[str]:
+        """Split a collection's inner type args on top-level commas, respecting
+        nested ``<...>`` (e.g. ``text, frozen<list<int>>`` -> two args)."""
+        args = []
+        depth = 0
+        cur = ""
+        for ch in inner:
+            if ch == '<':
+                depth += 1
+                cur += ch
+            elif ch == '>':
+                depth -= 1
+                cur += ch
+            elif ch == ',' and depth == 0:
+                args.append(cur.strip())
+                cur = ""
+            else:
+                cur += ch
+        if cur.strip():
+            args.append(cur.strip())
+        return args
 
     def _parse_primary_key_clause(self, pk_clause: str) -> Tuple[List[str], List[str]]:
         """Parse PRIMARY KEY clause into partition and clustering columns."""
-        # Extract everything inside PRIMARY KEY (...)
         pk_match = re.search(r'PRIMARY\s+KEY\s*\((.+)\)', pk_clause, re.IGNORECASE)
         if not pk_match:
             return [], []
@@ -216,7 +228,6 @@ class CassandraAdapter(DatabaseAdapter):
         inner_match = re.match(r'\((.+?)\)\s*(?:,\s*(.+))?$', pk_content)
 
         if inner_match:
-            # Composite partition key: ((part1, part2), clust1, clust2)
             partition_str = inner_match.group(1)
             clustering_str = inner_match.group(2)
 
@@ -240,7 +251,6 @@ class CassandraAdapter(DatabaseAdapter):
         """Build UniqueConstraint with PARTITION and CLUSTERING key types."""
         unique_props = []
 
-        # Add partition key columns
         for col_name in partition_cols:
             attr = entity.get_property(col_name)
             if attr:
@@ -251,7 +261,6 @@ class CassandraAdapter(DatabaseAdapter):
                     property_id=attr.meta_id
                 ))
 
-        # Add clustering key columns
         for col_name in clustering_cols:
             attr = entity.get_property(col_name)
             if attr:
@@ -283,10 +292,6 @@ class CassandraAdapter(DatabaseAdapter):
         adapter = CassandraAdapter()
         return adapter.parse(content, db_name)
 
-    # =========================================================================
-    # EXPORT METHODS (Unified Meta Schema -> CQL DDL)
-    # =========================================================================
-
     @classmethod
     def export_to_cql(cls, database: Database) -> str:
         """Export Unified Meta Schema to Cassandra CQL DDL format."""
@@ -310,26 +315,20 @@ class CassandraAdapter(DatabaseAdapter):
 
         columns = []
 
-        # Process properties -> column definitions
         for attr in entity.properties:
             col_def = cls._export_property_to_column(attr)
             columns.append(f"    {col_def}")
 
-        # Build PRIMARY KEY clause
         pk_clause = cls._build_primary_key_clause(entity)
         if pk_clause:
             columns.append(f"    {pk_clause}")
 
         lines.append(",\n".join(columns))
 
-        # Emit ``WITH CLUSTERING ORDER BY (...)`` when any clustering
-        # UniqueProperty carries an explicit order. CQL's own default is
-        # ASC, so to keep round-trip output minimal we only emit the WITH
-        # clause when at least one order is actually set (and skip it when
-        # all clustering columns are None or ``asc``). Without this guard
-        # every Cassandra table would gain a redundant ``WITH CLUSTERING
-        # ORDER BY (... ASC)`` line, breaking byte-stable comparison
-        # against schemas written without an explicit ORDER BY.
+        # Only emit ``WITH CLUSTERING ORDER BY (...)`` when an order is
+        # explicitly set. CQL defaults to ASC, so emitting it unconditionally
+        # would add a redundant line and break byte-stable comparison against
+        # schemas written without an explicit ORDER BY.
         order_by = cls._build_clustering_order_clause(entity)
         if order_by:
             lines.append(f")\nWITH {order_by};")
@@ -344,7 +343,6 @@ class CassandraAdapter(DatabaseAdapter):
         pk = entity.get_primary_key()
         if not pk:
             return None
-        # Collect clustering columns with their declared order.
         clustering_entries: List[Tuple[str, str]] = []
         any_explicit = False
         for up in pk.unique_properties:
@@ -373,7 +371,9 @@ class CassandraAdapter(DatabaseAdapter):
     def _get_cql_type(cls, attr: Property) -> str:
         """Get CQL type string from property."""
         if not isinstance(attr.data_type, PrimitiveDataType):
-            return 'TEXT'
+            # List/Set/Map/Tuple render their native CQL collection syntax
+            # (list<text>, set<int>, map<text, int>, tuple<...>) recursively.
+            return attr.data_type.to_native(DatabaseType.COLUMNAR)
 
         primitive = attr.data_type.primitive_type
         return cls.REVERSE_TYPE_MAP.get(primitive, 'TEXT')

@@ -2635,6 +2635,11 @@
             const c = document.getElementById('gen' + (side === 'src' ? 'Src' : 'Tgt') + 'MetaResult');
             const s = data.summary || {};
             let html = '<div class="inspector-title" style="font-size:14px;">Meta V1 Summary</div>';
+            if (data.notice) {
+                html += '<div style="margin-bottom:12px;padding:8px 10px;border-radius:6px;'
+                     +  'background:#FFF4E5;border:1px solid #FFCC80;color:#8A5A00;font-size:12px;">'
+                     +  '⚠ [NOTICE] ' + escapeHtml(data.notice) + '</div>';
+            }
             html += '<div class="summary-grid" style="margin-bottom:12px;">';
             html += '<div class="summary-card"><div class="num">' + s.entity_count + '</div><div class="label">Entities</div></div>';
             html += '<div class="summary-card"><div class="num">' + s.property_count + '</div><div class="label">Properties</div></div>';

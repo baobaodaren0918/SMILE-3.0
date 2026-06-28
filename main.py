@@ -285,13 +285,11 @@ def main():
     target_type = config.target_type
     smile_file = config.smile_file
 
-    # Check files exist
     for f in [config.source_file, config.smile_file]:
         if not f.exists():
             print(f"{RED}[ERROR] File not found: {f}{RESET}")
             return 1
 
-    # Run migration via core.run_migration()
     print(f"\n{CYAN}[Step 1] Reverse Engineering -> Meta V1{RESET}")
     print(f"\n{CYAN}[Step 2] Transformation: Meta V1 + {smile_file.name} -> Meta V2{RESET}")
 
@@ -301,7 +299,6 @@ def main():
         print(f"{RED}[ERROR] {result['error']}{RESET}")
         return 1
 
-    # Print operation execution results
     operations_detail = result.get("operations_detail", [])
     print_operations(operations_detail)
 

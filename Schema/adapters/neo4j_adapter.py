@@ -22,11 +22,12 @@ class Neo4jAdapter(DatabaseAdapter):
       * GraphQL SDL using @node, @relationship and @cardinality directives
     """
 
-    # =========================================================================
-    # TYPE MAPPING (from centralized TypeMappings)
-    # =========================================================================
     TYPE_MAP = TypeMappings.NEO4J_TO_PRIMITIVE
-    REVERSE_TYPE_MAP = TypeMappings.PRIMITIVE_TO_NEO4J
+    # NB: no REVERSE_TYPE_MAP here. Unlike the other adapters, GraphQL SDL
+    # export does not map primitives via PRIMITIVE_TO_NEO4J; it uses the
+    # GraphQL-scalar mapping in _graphql_type_for_property() instead
+    # (Int/Float/String/Boolean/ID). PRIMITIVE_TO_NEO4J stays in TypeMappings
+    # for display use in core/serialization.py.
 
     # Cardinality mapping: JSON string -> Cardinality enum
     CARDINALITY_MAP: Dict[str, Cardinality] = {
@@ -37,17 +38,9 @@ class Neo4jAdapter(DatabaseAdapter):
         "n..m": Cardinality.MANY_TO_MANY,
     }
 
-    # =========================================================================
-    # INITIALIZATION
-    # =========================================================================
-
     def __init__(self):
         """Initialize adapter with empty state."""
         self.database: Optional[Database] = None
-
-    # =========================================================================
-    # PARSE METHODS (JSON -> Unified Meta Schema)
-    # =========================================================================
 
     def parse(self, schema: Union[Dict[str, Any], str], db_name: str = "database") -> Database:
         """Parse Neo4j graph schema and return Database object."""
@@ -62,13 +55,11 @@ class Neo4jAdapter(DatabaseAdapter):
                 return self.parse_graphql(schema, db_name)
         self.database = Database(db_name=db_name, db_type=DatabaseType.GRAPH)
 
-        # Step 1: Parse nodes -> EntityType with entity_kind=VERTEX
         nodes = schema.get("nodes", [])
         for node_def in nodes:
             entity = self._parse_node(node_def)
             self.database.add_entity_type(entity)
 
-        # Step 2: Parse relationships -> EntityType(EDGE) + Edge
         relationships = schema.get("relationships", [])
         for rel_def in relationships:
             self._parse_relationship(rel_def)
@@ -108,7 +99,6 @@ class Neo4jAdapter(DatabaseAdapter):
         if extra_labels:
             entity.labels = list(extra_labels)
 
-        # Parse properties -> Property objects
         properties = node_def.get("properties", [])
         for prop_def in properties:
             prop_name = prop_def.get("name", "")
@@ -157,7 +147,6 @@ class Neo4jAdapter(DatabaseAdapter):
         source_end_cardinality_str = rel_def.get("source_end_cardinality")
         source_end_cardinality = self.CARDINALITY_MAP.get(source_end_cardinality_str) if source_end_cardinality_str else None
 
-        # Parse relationship properties -> Property objects
         edge_properties = []
         for prop_def in rel_def.get("properties", []):
             prop_name = prop_def.get("name", "")
@@ -172,7 +161,6 @@ class Neo4jAdapter(DatabaseAdapter):
             )
             edge_properties.append(attr)
 
-        # Create EDGE EntityType (schema-level definition)
         edge_entity = EntityType(
             object_name=[rel_name],
             entity_kind=EntityKind.EDGE,
@@ -184,7 +172,6 @@ class Neo4jAdapter(DatabaseAdapter):
         )
         self.database.add_entity_type(edge_entity)
 
-        # Create Edge on source entity's relationships list
         source_entity = self.database.get_entity_type(source_label)
         if not source_entity:
             # ``logger.warning`` instead of ``print`` so the message goes
@@ -213,10 +200,6 @@ class Neo4jAdapter(DatabaseAdapter):
         """Parse a Neo4j property type string to PrimitiveDataType."""
         primitive = self.TYPE_MAP.get(type_name, PrimitiveType.STRING)
         return PrimitiveDataType(primitive_type=primitive)
-
-    # =========================================================================
-    # GRAPHQL SDL PARSING
-    # =========================================================================
 
     @staticmethod
     def _looks_like_graphql(text: str) -> bool:
@@ -409,10 +392,6 @@ class Neo4jAdapter(DatabaseAdapter):
 
         return self.database
 
-    # =========================================================================
-    # LOAD FROM FILE
-    # =========================================================================
-
     @staticmethod
     def load_from_file(file_path: str, db_name: str = None) -> Database:
         """Load Neo4j graph schema from file and parse to Database."""
@@ -435,10 +414,6 @@ class Neo4jAdapter(DatabaseAdapter):
                 except json.JSONDecodeError as e:
                     raise ValueError(f"Invalid JSON in Neo4j schema file '{file_path}': {e}")
             return adapter.parse(schema, db_name)
-
-    # =========================================================================
-    # EXPORT METHODS (Unified Meta Schema -> GraphQL SDL)
-    # =========================================================================
 
     @classmethod
     def _graphql_type_for_property(cls, attr: Property) -> str:

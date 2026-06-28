@@ -290,7 +290,6 @@ def run_migration(direction: str) -> Dict[str, Any]:
         if not f.exists():
             return _early_exit(f"File not found: {f}")
 
-    # Step 1: source DDL → Meta V1, parse SMILE
     try:
         (source_adapter, source_db, meta_v1_db, smile_content, raw_source,
          operations, errors) = run_load(source_file, smile_file, source_type)
@@ -299,11 +298,9 @@ def run_migration(direction: str) -> Dict[str, Any]:
     if errors:
         return _early_exit(f"SMILE parse errors: {errors}")
 
-    # Step 2: apply ops → Meta V2
     transformer = SchemaTransformer(source_db, target_type=target_type)
     operations_detail, success_count, skipped_count, error_count = run_apply(transformer, operations)
 
-    # Step 3: normalize + export Meta V2 → target DDL
     try:
         result_db, exported_target, _ = run_export(transformer, source_type, target_type)
     except ValueError as e:

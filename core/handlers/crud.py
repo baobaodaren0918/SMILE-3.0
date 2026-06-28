@@ -349,25 +349,8 @@ class CRUDHandlersMixin:
         # Update object_name: keep parent path, change last element
         entity.object_name = entity.parent_path + [new_name]
         self.database.add_entity_type(entity)
-        # Update cross-references in other entities
-        for other_entity in self.database.entity_types.values():
-            for rel in other_entity.relationships:
-                if hasattr(rel, 'refs_to') and rel.refs_to == old_name:
-                    rel.refs_to = new_name
-                if hasattr(rel, 'aggregates') and rel.aggregates == old_name:
-                    rel.aggregates = new_name
-                if isinstance(rel, Edge):
-                    if rel.source_entity == old_name:
-                        rel.source_entity = new_name
-                    if rel.target_entity == old_name:
-                        rel.target_entity = new_name
-        # Update EDGE entity source/target references
-        for e in self.database.entity_types.values():
-            if e.entity_kind == EntityKind.EDGE:
-                if e.source_entity == old_name:
-                    e.source_entity = new_name
-                if e.target_entity == old_name:
-                    e.target_entity = new_name
+        # Repoint cross-references (Reference/Embedded/Edge endpoints) in other entities
+        self._remap_entity_references(old_name, new_name)
         # If renaming an EDGE entity, update Edge.rel_type_name on source entity
         if entity.entity_kind == EntityKind.EDGE and entity.source_entity:
             source_ent = self.database.get_entity_type(entity.source_entity)
@@ -504,10 +487,8 @@ class CRUDHandlersMixin:
         if src_entity and tgt_entity:
                 src_attr = src_entity.get_property(src_attr_name)
                 if src_attr:
-                    # Add to target
                     new_attr = Property(tgt_attr_name, src_attr.data_type, False, src_attr.is_optional)
                     tgt_entity.add_property(new_attr)
-                    # Remove from source
                     src_entity.remove_property(src_attr_name)
                     self._touch(src_entity.name, tgt_entity.name)
                     self.changes.append(f"MOVE_PROP:{source_path}->{target_path}")

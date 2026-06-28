@@ -13,17 +13,9 @@ class MigrationConfig:
     target_type: str
     display_name: str
 
-# PATH CONFIGURATION
-
-# Base directory (project root)
 BASE_DIR = Path(__file__).parent
-
-# Tests directory (contains .smile migration scripts and test data)
 TESTS_DIR = BASE_DIR / "tests"
 
-
-# SOURCE/TARGET TYPE CONSTANTS
-# Used throughout the codebase — never use raw strings for these.
 
 SOURCE_TYPE_RELATIONAL = "Relational"
 SOURCE_TYPE_DOCUMENT = "Document"
@@ -84,281 +76,78 @@ MIGRATION_TARGET_FILES = {
 }
 
 
-# MIGRATION CONFIGURATIONS
-# Define available migration scenarios with their source/target files.
-# The literal dict below is kept for readability; the MigrationConfig
-# wrapper at the bottom of this section enforces the schema.
-
-_RAW_CONFIGS = {
-    # =========================================================================
-    # NORTHWIND — Same-Model Evolution (R→R, D→D, G→G, C→C)
-    # =========================================================================
-
-    # Northwind: PostgreSQL V1 -> PostgreSQL V2
-    "northwind_r2r_specific": {
-        "source_file": TESTS_DIR / "northwind_postgresql.sql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_pg1_to_pg2.smile",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Northwind: PostgreSQL \u2192 PostgreSQL V2 (Specific)",
-    },
-    "northwind_r2r_generalized": {
-        "source_file": TESTS_DIR / "northwind_postgresql.sql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_pg1_to_pg2.smile_gen",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Northwind: PostgreSQL \u2192 PostgreSQL V2 (Generalized)",
-    },
-
-    # Northwind: MongoDB V1 -> MongoDB V2
-    "northwind_d2d_specific": {
-        "source_file": TESTS_DIR / "northwind_mongodb.json",
-        "smile_file": TESTS_DIR / "specific" / "northwind_mongo1_to_mongo2.smile",
-        "source_type": SOURCE_TYPE_DOCUMENT,
-        "target_type": SOURCE_TYPE_DOCUMENT,
-        "display_name": "Northwind: MongoDB \u2192 MongoDB V2 (Specific)",
-    },
-    "northwind_d2d_generalized": {
-        "source_file": TESTS_DIR / "northwind_mongodb.json",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_mongo1_to_mongo2.smile_gen",
-        "source_type": SOURCE_TYPE_DOCUMENT,
-        "target_type": SOURCE_TYPE_DOCUMENT,
-        "display_name": "Northwind: MongoDB \u2192 MongoDB V2 (Generalized)",
-    },
-
-    # Northwind: Neo4j V1 -> Neo4j V2
-    "northwind_g2g_specific": {
-        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_graph1_to_graph2.smile",
-        "source_type": SOURCE_TYPE_GRAPH,
-        "target_type": SOURCE_TYPE_GRAPH,
-        "display_name": "Northwind: Neo4j \u2192 Neo4j V2 (Specific)",
-    },
-    "northwind_g2g_generalized": {
-        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_graph1_to_graph2.smile_gen",
-        "source_type": SOURCE_TYPE_GRAPH,
-        "target_type": SOURCE_TYPE_GRAPH,
-        "display_name": "Northwind: Neo4j \u2192 Neo4j V2 (Generalized)",
-    },
-
-    # Northwind: Cassandra V1 -> Cassandra V2
-    "northwind_c2c_specific": {
-        "source_file": TESTS_DIR / "northwind_cassandra.cql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_cass1_to_cass2.smile",
-        "source_type": SOURCE_TYPE_COLUMNAR,
-        "target_type": SOURCE_TYPE_COLUMNAR,
-        "display_name": "Northwind: Cassandra \u2192 Cassandra V2 (Specific)",
-    },
-    "northwind_c2c_generalized": {
-        "source_file": TESTS_DIR / "northwind_cassandra.cql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_cass1_to_cass2.smile_gen",
-        "source_type": SOURCE_TYPE_COLUMNAR,
-        "target_type": SOURCE_TYPE_COLUMNAR,
-        "display_name": "Northwind: Cassandra \u2192 Cassandra V2 (Generalized)",
-    },
-
-    # =========================================================================
-    # NORTHWIND — Cross-Model Migration (grouped by source)
-    # =========================================================================
-
-    # --- From PostgreSQL ---
-    "northwind_r2d_specific": {
-        "source_file": TESTS_DIR / "northwind_postgresql.sql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_pg_to_mongo.smile",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_DOCUMENT,
-        "display_name": "Northwind: PostgreSQL \u2192 MongoDB (Specific)",
-    },
-    "northwind_r2d_generalized": {
-        "source_file": TESTS_DIR / "northwind_postgresql.sql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_pg_to_mongo.smile_gen",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_DOCUMENT,
-        "display_name": "Northwind: PostgreSQL \u2192 MongoDB (Generalized)",
-    },
-    "northwind_r2g_specific": {
-        "source_file": TESTS_DIR / "northwind_postgresql.sql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_pg_to_neo4j.smile",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_GRAPH,
-        "display_name": "Northwind: PostgreSQL \u2192 Neo4j (Specific)",
-    },
-    "northwind_r2g_generalized": {
-        "source_file": TESTS_DIR / "northwind_postgresql.sql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_pg_to_neo4j.smile_gen",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_GRAPH,
-        "display_name": "Northwind: PostgreSQL \u2192 Neo4j (Generalized)",
-    },
-    "northwind_r2c_specific": {
-        "source_file": TESTS_DIR / "northwind_postgresql.sql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_pg_to_cass.smile",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_COLUMNAR,
-        "display_name": "Northwind: PostgreSQL \u2192 Cassandra (Specific)",
-    },
-    "northwind_r2c_generalized": {
-        "source_file": TESTS_DIR / "northwind_postgresql.sql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_pg_to_cass.smile_gen",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_COLUMNAR,
-        "display_name": "Northwind: PostgreSQL \u2192 Cassandra (Generalized)",
-    },
-
-    # --- From MongoDB ---
-    "northwind_d2r_specific": {
-        "source_file": TESTS_DIR / "northwind_mongodb.json",
-        "smile_file": TESTS_DIR / "specific" / "northwind_mongo_to_pg.smile",
-        "source_type": SOURCE_TYPE_DOCUMENT,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Northwind: MongoDB \u2192 PostgreSQL (Specific)",
-    },
-    "northwind_d2r_generalized": {
-        "source_file": TESTS_DIR / "northwind_mongodb.json",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_mongo_to_pg.smile_gen",
-        "source_type": SOURCE_TYPE_DOCUMENT,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Northwind: MongoDB \u2192 PostgreSQL (Generalized)",
-    },
-    "northwind_d2g_specific": {
-        "source_file": TESTS_DIR / "northwind_mongodb.json",
-        "smile_file": TESTS_DIR / "specific" / "northwind_mongo_to_neo4j.smile",
-        "source_type": SOURCE_TYPE_DOCUMENT,
-        "target_type": SOURCE_TYPE_GRAPH,
-        "display_name": "Northwind: MongoDB \u2192 Neo4j (Specific)",
-    },
-    "northwind_d2g_generalized": {
-        "source_file": TESTS_DIR / "northwind_mongodb.json",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_mongo_to_neo4j.smile_gen",
-        "source_type": SOURCE_TYPE_DOCUMENT,
-        "target_type": SOURCE_TYPE_GRAPH,
-        "display_name": "Northwind: MongoDB \u2192 Neo4j (Generalized)",
-    },
-    "northwind_d2c_specific": {
-        "source_file": TESTS_DIR / "northwind_mongodb.json",
-        "smile_file": TESTS_DIR / "specific" / "northwind_mongo_to_cass.smile",
-        "source_type": SOURCE_TYPE_DOCUMENT,
-        "target_type": SOURCE_TYPE_COLUMNAR,
-        "display_name": "Northwind: MongoDB \u2192 Cassandra (Specific)",
-    },
-    "northwind_d2c_generalized": {
-        "source_file": TESTS_DIR / "northwind_mongodb.json",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_mongo_to_cass.smile_gen",
-        "source_type": SOURCE_TYPE_DOCUMENT,
-        "target_type": SOURCE_TYPE_COLUMNAR,
-        "display_name": "Northwind: MongoDB \u2192 Cassandra (Generalized)",
-    },
-
-    # --- From Neo4j ---
-    "northwind_g2r_specific": {
-        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_neo4j_to_pg.smile",
-        "source_type": SOURCE_TYPE_GRAPH,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Northwind: Neo4j \u2192 PostgreSQL (Specific)",
-    },
-    "northwind_g2r_generalized": {
-        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_neo4j_to_pg.smile_gen",
-        "source_type": SOURCE_TYPE_GRAPH,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Northwind: Neo4j \u2192 PostgreSQL (Generalized)",
-    },
-    "northwind_g2d_specific": {
-        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_neo4j_to_mongo.smile",
-        "source_type": SOURCE_TYPE_GRAPH,
-        "target_type": SOURCE_TYPE_DOCUMENT,
-        "display_name": "Northwind: Neo4j \u2192 MongoDB (Specific)",
-    },
-    "northwind_g2d_generalized": {
-        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_neo4j_to_mongo.smile_gen",
-        "source_type": SOURCE_TYPE_GRAPH,
-        "target_type": SOURCE_TYPE_DOCUMENT,
-        "display_name": "Northwind: Neo4j \u2192 MongoDB (Generalized)",
-    },
-    "northwind_g2c_specific": {
-        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_neo4j_to_cass.smile",
-        "source_type": SOURCE_TYPE_GRAPH,
-        "target_type": SOURCE_TYPE_COLUMNAR,
-        "display_name": "Northwind: Neo4j \u2192 Cassandra (Specific)",
-    },
-    "northwind_g2c_generalized": {
-        "source_file": TESTS_DIR / "northwind_neo4j.graphql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_neo4j_to_cass.smile_gen",
-        "source_type": SOURCE_TYPE_GRAPH,
-        "target_type": SOURCE_TYPE_COLUMNAR,
-        "display_name": "Northwind: Neo4j \u2192 Cassandra (Generalized)",
-    },
-
-    # --- From Cassandra ---
-    "northwind_c2r_specific": {
-        "source_file": TESTS_DIR / "northwind_cassandra.cql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_cass_to_pg.smile",
-        "source_type": SOURCE_TYPE_COLUMNAR,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Northwind: Cassandra \u2192 PostgreSQL (Specific)",
-    },
-    "northwind_c2r_generalized": {
-        "source_file": TESTS_DIR / "northwind_cassandra.cql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_cass_to_pg.smile_gen",
-        "source_type": SOURCE_TYPE_COLUMNAR,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Northwind: Cassandra \u2192 PostgreSQL (Generalized)",
-    },
-    "northwind_c2d_specific": {
-        "source_file": TESTS_DIR / "northwind_cassandra.cql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_cass_to_mongo.smile",
-        "source_type": SOURCE_TYPE_COLUMNAR,
-        "target_type": SOURCE_TYPE_DOCUMENT,
-        "display_name": "Northwind: Cassandra \u2192 MongoDB (Specific)",
-    },
-    "northwind_c2d_generalized": {
-        "source_file": TESTS_DIR / "northwind_cassandra.cql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_cass_to_mongo.smile_gen",
-        "source_type": SOURCE_TYPE_COLUMNAR,
-        "target_type": SOURCE_TYPE_DOCUMENT,
-        "display_name": "Northwind: Cassandra \u2192 MongoDB (Generalized)",
-    },
-    "northwind_c2g_specific": {
-        "source_file": TESTS_DIR / "northwind_cassandra.cql",
-        "smile_file": TESTS_DIR / "specific" / "northwind_cass_to_neo4j.smile",
-        "source_type": SOURCE_TYPE_COLUMNAR,
-        "target_type": SOURCE_TYPE_GRAPH,
-        "display_name": "Northwind: Cassandra \u2192 Neo4j (Specific)",
-    },
-    "northwind_c2g_generalized": {
-        "source_file": TESTS_DIR / "northwind_cassandra.cql",
-        "smile_file": TESTS_DIR / "generalized" / "northwind_cass_to_neo4j.smile_gen",
-        "source_type": SOURCE_TYPE_COLUMNAR,
-        "target_type": SOURCE_TYPE_GRAPH,
-        "display_name": "Northwind: Cassandra \u2192 Neo4j (Generalized)",
-    },
-
-    # ---------------------------------------------------------------------
-    # Grammar-completeness suite \u2014 exercises the SMILE operations no other
-    # test invokes, on a tiny synthetic schema. Pure smoke-test for handler
-    # reachability (no native target file \u2192 L1/L2 validation returns N/A).
-    # ---------------------------------------------------------------------
-    "grammar_completeness_specific": {
-        "source_file": TESTS_DIR / "grammar_completeness" / "source.sql",
-        "smile_file":  TESTS_DIR / "grammar_completeness" / "test_all_unused.smile",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Grammar completeness: every otherwise-untested op (specific)",
-    },
-    "grammar_completeness_generalized": {
-        "source_file": TESTS_DIR / "grammar_completeness" / "source.sql",
-        "smile_file":  TESTS_DIR / "grammar_completeness" / "test_all_unused.smile_gen",
-        "source_type": SOURCE_TYPE_RELATIONAL,
-        "target_type": SOURCE_TYPE_RELATIONAL,
-        "display_name": "Grammar completeness: every otherwise-untested op (generalized)",
-    },
+# Configs are generated from this paradigm matrix (not hand-written) so the
+# 4x4 grid can never drift half-updated when a paradigm/grammar is added.
+# Note the Neo4j script-file token differs by family: cross-model uses "neo4j",
+# same-model evolution uses "graph".
+#   key code | source file | display name | cross-model token | same-model token
+_PARADIGMS = {
+    SOURCE_TYPE_RELATIONAL: ("r", "northwind_postgresql.sql", "PostgreSQL", "pg",    "pg"),
+    SOURCE_TYPE_DOCUMENT:   ("d", "northwind_mongodb.json",   "MongoDB",    "mongo", "mongo"),
+    SOURCE_TYPE_GRAPH:      ("g", "northwind_neo4j.graphql",  "Neo4j",      "neo4j", "graph"),
+    SOURCE_TYPE_COLUMNAR:   ("c", "northwind_cassandra.cql",  "Cassandra",  "cass",  "cass"),
 }
+# Iteration order — fixes the order entries appear in MIGRATION_CONFIGS.
+_PARADIGM_ORDER = [
+    SOURCE_TYPE_RELATIONAL, SOURCE_TYPE_DOCUMENT,
+    SOURCE_TYPE_GRAPH, SOURCE_TYPE_COLUMNAR,
+]
+# grammar key suffix | script subdir | script extension | display label
+_GRAMMARS = [
+    ("specific",    "specific",    ".smile",     "Specific"),
+    ("generalized", "generalized", ".smile_gen", "Generalized"),
+]
 
+
+def _build_raw_configs():
+    """Build the scenario dict from the paradigm matrix. Order: 4 same-model
+    evolutions, then 12 cross-model migrations grouped by source, then the 2
+    grammar-completeness smoke configs — each direction in both grammars."""
+    cfgs = {}
+
+    # --- Same-model evolution (R->R, D->D, G->G, C->C) ---
+    for p in _PARADIGM_ORDER:
+        code, src, disp, _xtok, stok = _PARADIGMS[p]
+        for gsuf, gdir, ext, glabel in _GRAMMARS:
+            cfgs[f"northwind_{code}2{code}_{gsuf}"] = {
+                "source_file": TESTS_DIR / src,
+                "smile_file": TESTS_DIR / gdir / f"northwind_{stok}1_to_{stok}2{ext}",
+                "source_type": p,
+                "target_type": p,
+                "display_name": f"Northwind: {disp} → {disp} V2 ({glabel})",
+            }
+
+    # --- Cross-model migration (grouped by source) ---
+    for s in _PARADIGM_ORDER:
+        scode, ssrc, sdisp, sxtok, _sstok = _PARADIGMS[s]
+        for t in _PARADIGM_ORDER:
+            if t == s:
+                continue
+            tcode, _tsrc, tdisp, txtok, _tstok = _PARADIGMS[t]
+            for gsuf, gdir, ext, glabel in _GRAMMARS:
+                cfgs[f"northwind_{scode}2{tcode}_{gsuf}"] = {
+                    "source_file": TESTS_DIR / ssrc,
+                    "smile_file": TESTS_DIR / gdir / f"northwind_{sxtok}_to_{txtok}{ext}",
+                    "source_type": s,
+                    "target_type": t,
+                    "display_name": f"Northwind: {sdisp} → {tdisp} ({glabel})",
+                }
+
+    # --- Grammar-completeness suite (exercises every otherwise-untested op
+    # on a tiny synthetic schema; no native target -> L1/L2 validation N/A) ---
+    for gsuf, _gdir, ext, glabel in _GRAMMARS:
+        cfgs[f"grammar_completeness_{gsuf}"] = {
+            "source_file": TESTS_DIR / "grammar_completeness" / "source.sql",
+            "smile_file": TESTS_DIR / "grammar_completeness" / f"test_all_unused{ext}",
+            "source_type": SOURCE_TYPE_RELATIONAL,
+            "target_type": SOURCE_TYPE_RELATIONAL,
+            "display_name": f"Grammar completeness: every otherwise-untested op ({glabel.lower()})",
+        }
+
+    return cfgs
+
+
+_RAW_CONFIGS = _build_raw_configs()
 
 # Wrap raw dicts in MigrationConfig — fails loudly at import time if any
 # entry has a missing or extra key.

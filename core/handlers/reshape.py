@@ -213,26 +213,10 @@ class ReshapeHandlersMixin:
                             if new_up:
                                 fkp.points_to_unique_property_id = new_up
 
-        # Update cross-references in other entities pointing to removed sources
+        # Repoint cross-references in other entities from each removed source
+        # onto the surviving merge target.
         for old_name in removed_sources:
-            for other_entity in self.database.entity_types.values():
-                for rel in other_entity.relationships:
-                    if hasattr(rel, 'refs_to') and rel.refs_to == old_name:
-                        rel.refs_to = target_name
-                    if hasattr(rel, 'aggregates') and rel.aggregates == old_name:
-                        rel.aggregates = target_name
-                    if isinstance(rel, Edge):
-                        if rel.source_entity == old_name:
-                            rel.source_entity = target_name
-                        if rel.target_entity == old_name:
-                            rel.target_entity = target_name
-            # Update EDGE entity source/target references
-            for e in self.database.entity_types.values():
-                if e.entity_kind == EntityKind.EDGE:
-                    if e.source_entity == old_name:
-                        e.source_entity = target_name
-                    if e.target_entity == old_name:
-                        e.target_entity = target_name
+            self._remap_entity_references(old_name, target_name)
 
         self._touch(source1_name, source2_name, target_name)
         self.changes.append(f"MERGE:{source1_name},{source2_name}->{target_name}")

@@ -106,7 +106,7 @@ def _build_smile_template(db_type: str) -> str:
     lines = [
         f"MIGRATION my_migration:1.0",
         f"FROM {db_label} TO <TARGET_TYPE>",
-        f"USING my_schema:1",
+        f"USING my_schema VERSION 1.0",
         f"",
         f"-- Your operations here, for example:",
         f"-- RENAME_ENTITY old_name TO new_name",
@@ -145,6 +145,16 @@ def inspect_schema(source: str, db_type: str, input_mode: str = "file",
         "meta_schema": db.to_dict(),
         "summary": _build_summary(db),
         "smile_template": _build_smile_template(resolved_type),
+        # Adapters return an empty Database for unrecognised input rather than
+        # raising; surface that explicitly as a NOTICE so the UI/CLI can flag it
+        # instead of silently showing an empty schema as if it parsed
+        # successfully. (Same [NOTICE] convention used across validation.)
+        "notice": (
+            None if db.entity_types else
+            "Parsed 0 entities — the input may not be valid "
+            f"{DB_TYPE_DISPLAY_NAME.get(resolved_type, resolved_type)} schema "
+            "text, or the wrong database type was selected."
+        ),
     }
 
 
@@ -166,20 +176,17 @@ def main():
 
     args = parser.parse_args()
 
-    # Validate args
     if not args.file and not args.text:
         parser.error("Either --file or --text is required")
 
     if args.text and not args.db_type:
         parser.error("--type is required when using --text mode")
 
-    # Determine db_type
     if args.db_type:
         db_type = args.db_type
     else:
         db_type = _detect_db_type(args.file)
 
-    # Get source
     if args.text:
         source = sys.stdin.read()
         input_mode = "text"
@@ -197,6 +204,8 @@ def main():
         print(f"\n{'='*60}")
         print(f"Schema Inspector — {result['db_type_display']}")
         print(f"{'='*60}")
+        if result.get("notice"):
+            print(f"\n[NOTICE] {result['notice']}")
         summary = result["summary"]
         print(f"\nEntities: {summary['entity_count']}")
         print(f"Properties: {summary['property_count']}")
@@ -212,7 +221,6 @@ def main():
         print(f"\n--- SMILE Template ---")
         print(result["smile_template"])
     else:
-        # Full JSON output
         print(json.dumps(result, indent=2, ensure_ascii=False))
 
 

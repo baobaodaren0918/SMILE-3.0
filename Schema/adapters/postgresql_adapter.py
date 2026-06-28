@@ -27,7 +27,6 @@ class _CheckExprParser:
         self.pos = 0
         self.original = original
 
-    # ── token cursor helpers ──────────────────────────────────────────
     def at_end(self) -> bool:
         return self.pos >= len(self.tokens)
 
@@ -52,7 +51,6 @@ class _CheckExprParser:
             return True
         return False
 
-    # ── grammar productions ──────────────────────────────────────────
     def parse_expr(self) -> CheckExpr:
         """Top-level entry: the OR layer (lowest precedence)."""
         left = self._parse_and()
@@ -181,15 +179,7 @@ class _CheckExprParser:
 class PostgreSQLAdapter(DatabaseAdapter):
     """Adapter to parse PostgreSQL DDL and create Unified Meta Schema."""
 
-    # =========================================================================
-    # TYPE MAPPING (from centralized TypeMappings)
-    # =========================================================================
-    # Use centralized mappings from unified_meta_schema.py
     TYPE_MAP = TypeMappings.POSTGRESQL_TO_PRIMITIVE
-
-    # =========================================================================
-    # INITIALIZATION
-    # =========================================================================
 
     def __init__(self):
         """Initialize adapter with empty state."""
@@ -205,38 +195,29 @@ class PostgreSQLAdapter(DatabaseAdapter):
         # entries — distinguishing them from N independent single-column FKs.
         self._pending_table_fks: List[Tuple[str, List[str], str, List[str]]] = []
 
-    # =========================================================================
-    # PARSE METHODS (DDL -> Unified Meta Schema)
-    # =========================================================================
-
     def parse(self, ddl_content: str, db_name: str = "database") -> Database:
         """Parse SQL DDL content and return Database object."""
         self.database = Database(db_name=db_name, db_type=DatabaseType.RELATIONAL)
         self._pending_references = []
         self._pending_table_fks = []
 
-        # Step 1: Remove comments (helper inherited from DatabaseAdapter)
         ddl = self._remove_sql_comments(ddl_content)
-
-        # Step 2: Extract CREATE TABLE statements
         tables = self._extract_create_tables(ddl)
 
-        # Step 3: Parse each table
         for table_name, table_body in tables:
             entity = self._parse_table(table_name, table_body)
             self.database.add_entity_type(entity)
 
-        # Step 4: Resolve references after all entities are created
-        # (FK references need target table to exist)
+        # FK references need the target table to exist, so resolve them only
+        # after every entity has been created.
         self._resolve_references()
 
         return self.database
 
     def _extract_create_tables(self, ddl: str) -> List[Tuple[str, str]]:
-        """Extract CREATE TABLE statements from DDL."""
-        pattern = r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?(\w+)\s*\((.*?)\);'
-        matches = re.findall(pattern, ddl, re.IGNORECASE | re.DOTALL)
-        return matches
+        """Extract CREATE TABLE statements from DDL (quote/paren-aware)."""
+        # PostgreSQL has no WITH clause we consume, so drop the third element.
+        return [(name, body) for name, body, _with in self._scan_create_tables(ddl)]
 
     def _parse_table(self, table_name: str, table_body: str) -> EntityType:
         """Parse a single CREATE TABLE body into EntityType."""
@@ -253,19 +234,15 @@ class PostgreSQLAdapter(DatabaseAdapter):
             if not col_def:
                 continue
 
-            # Collect table-level constraint definitions for later processing
             upper = col_def.upper()
             if any(upper.startswith(kw) for kw in ['PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE', 'CHECK', 'CONSTRAINT']):
                 table_level_constraints.append(col_def)
                 continue
 
-            # Parse column definition
             attr, ref_info, check_ast = self._parse_column(col_def)
             if attr:
                 entity.add_property(attr)
 
-                # Handle inline PRIMARY KEY constraint
-                # e.g., "id SERIAL PRIMARY KEY"
                 if 'PRIMARY KEY' in col_def.upper():
                     constraint = UniqueConstraint(
                         is_primary_key=True,
@@ -619,7 +596,6 @@ class PostgreSQLAdapter(DatabaseAdapter):
 
     def _parse_column(self, col_def: str) -> Tuple[Optional[Property], Optional[Tuple[str, str]], Optional[CheckExpr]]:
         """Parse a single column definition."""
-        # Normalize whitespace (handle multi-line definitions)
         col_def = ' '.join(col_def.split())
 
         # Pattern: column_name TYPE [constraints] [REFERENCES table(col)]
@@ -635,13 +611,10 @@ class PostgreSQLAdapter(DatabaseAdapter):
         type_params = match.group(3)               # "100" for VARCHAR(100)
         constraints = match.group(4) or ""         # "NOT NULL REFERENCES customers(id)"
 
-        # Determine data type
         data_type = self._parse_data_type(col_type, type_params)
 
-        # Check constraints
-        # is_key: PRIMARY KEY explicitly declared OR SERIAL type (auto-increment implies PK)
+        # SERIAL is auto-increment, which implies PRIMARY KEY.
         is_key = 'PRIMARY KEY' in constraints.upper() or col_type in ('SERIAL', 'BIGSERIAL')
-        # is_optional: NOT NULL not present AND not a primary key
         is_optional = 'NOT NULL' not in constraints.upper() and not is_key
         # is_auto_generated: source said SERIAL/BIGSERIAL (PG auto-increment).
         # Carries forward into the meta model so the export side can decide
@@ -659,8 +632,6 @@ class PostgreSQLAdapter(DatabaseAdapter):
             is_auto_generated=is_auto_generated,
         )
 
-        # Check for REFERENCES clause (foreign key)
-        # Pattern: REFERENCES target_table(target_column)
         ref_info = None
         ref_match = re.search(r'REFERENCES\s+(\w+)\s*\((\w+)\)', constraints, re.IGNORECASE)
         if ref_match:
@@ -780,7 +751,6 @@ class PostgreSQLAdapter(DatabaseAdapter):
             target = self.database.get_entity_type(target_name)
 
             if entity and target:
-                # Get FK column's is_optional from property
                 attr = entity.get_property(ref_name)
                 is_optional = attr.is_optional if attr else True
                 is_unique = self._is_fk_column_unique(entity, attr)
@@ -899,12 +869,6 @@ class PostgreSQLAdapter(DatabaseAdapter):
         adapter = PostgreSQLAdapter()
         return adapter.parse(content, db_name)
 
-    # =========================================================================
-    # EXPORT METHODS (Unified Meta Schema -> DDL)
-    # =========================================================================
-
-    # Reverse mapping (from centralized TypeMappings)
-    # Used when exporting back to PostgreSQL format
     REVERSE_TYPE_MAP = TypeMappings.PRIMITIVE_TO_POSTGRESQL
 
     @classmethod
@@ -912,8 +876,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
         """Export Unified Meta Schema to PostgreSQL DDL format."""
         lines = []
 
-        # Sort entities by dependency order (entities with no FK first)
-        # This ensures REFERENCES clauses point to existing tables
+        # Sort so REFERENCES clauses point to already-created tables.
         sorted_entities = cls._sort_entities_by_dependency(database)
 
         for entity in sorted_entities:
@@ -928,7 +891,6 @@ class PostgreSQLAdapter(DatabaseAdapter):
         """Sort entities so that referenced tables come before referencing tables."""
         entities = list(database.entity_types.values())
 
-        # Build dependency graph: entity -> set of entities it depends on
         dependencies = {}
         for entity in entities:
             deps = set()
@@ -947,7 +909,6 @@ class PostgreSQLAdapter(DatabaseAdapter):
             if name in visited:
                 return
             visited.add(name)
-            # Visit dependencies first
             for dep in dependencies.get(name, []):
                 if dep in dependencies:  # Only visit if entity exists
                     visit(dep)
@@ -986,7 +947,6 @@ class PostgreSQLAdapter(DatabaseAdapter):
             if isinstance(rel, Reference) and rel.ref_name not in composite_fk_cols:
                 fk_refs[rel.ref_name] = rel
 
-        # Check for composite primary key (e.g., M:N join tables)
         pk_constraint = entity.get_primary_key()
         pk_columns = []
         if pk_constraint and pk_constraint.unique_properties:
@@ -997,13 +957,10 @@ class PostgreSQLAdapter(DatabaseAdapter):
 
         is_composite_pk = len(pk_columns) > 1
 
-        # Process properties -> columns
         for attr in entity.properties:
             col_def = cls._export_property_to_column(attr, fk_refs.get(attr.name), database, is_composite_pk, source_entity=entity)
             columns.append(f"    {col_def}")
 
-        # Add composite PRIMARY KEY constraint if needed
-        # e.g., PRIMARY KEY (customer_id, knows_customer_id)
         if is_composite_pk:
             pk_constraint_str = f"    PRIMARY KEY ({', '.join(pk_columns)})"
             columns.append(pk_constraint_str)
@@ -1102,20 +1059,17 @@ class PostgreSQLAdapter(DatabaseAdapter):
         """Export a property to column definition."""
         parts = [attr.name]
 
-        # Data type (VARCHAR, INTEGER, SERIAL, etc.)
         sql_type = cls._get_sql_type(attr)
         parts.append(sql_type)
 
-        # Constraint: PRIMARY KEY (only inline for single-column PK)
+        # Inline PRIMARY KEY only for single-column PK.
         if attr.is_key and not is_composite_pk:
             parts.append("PRIMARY KEY")
-        # Constraint: NOT NULL
-        # - Required if not optional
-        # - Required for composite PK columns (PK constraint is separate)
+        # Composite-PK columns need NOT NULL since the PK constraint is emitted
+        # separately as a table-level clause.
         elif not attr.is_optional or (attr.is_key and is_composite_pk):
             parts.append("NOT NULL")
 
-        # Constraint: REFERENCES (foreign key)
         if fk_ref:
             target_entity_name = fk_ref.get_target_entity_name()
             # Resolve the specifically-referenced target column from this column's
@@ -1153,12 +1107,10 @@ class PostgreSQLAdapter(DatabaseAdapter):
         primitive = attr.data_type.primitive_type
         base_type = cls.REVERSE_TYPE_MAP.get(primitive, 'VARCHAR')
 
-        # Handle VARCHAR with length
         if base_type == 'VARCHAR':
             max_len = attr.data_type.max_length or 255
             return f"VARCHAR({max_len})"
 
-        # Handle DECIMAL with precision/scale
         if base_type == 'DECIMAL':
             precision = attr.data_type.precision or 13
             scale = attr.data_type.scale or 2
@@ -1181,18 +1133,16 @@ class PostgreSQLAdapter(DatabaseAdapter):
     @classmethod
     def _get_target_pk_name(cls, entity_name: str, database: Database = None) -> str:
         """Get the PK column name for a target entity."""
-        # Try to get PK from database metadata
         if database:
             target_entity = database.get_entity_type(entity_name)
             if target_entity:
                 pk = target_entity.get_primary_key()
                 if pk and pk.unique_properties:
-                    # Use property_id to look up the property
                     pk_attr = target_entity.get_property_by_id(pk.unique_properties[0].property_id)
                     if pk_attr:
                         return pk_attr.name
 
-        # Fallback: default naming convention
+        # Fallback when no PK metadata is available.
         return f"{entity_name}_id"
 
     @classmethod
