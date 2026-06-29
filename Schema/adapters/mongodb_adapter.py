@@ -340,8 +340,6 @@ class MongoDBAdapter(DatabaseAdapter):
     @classmethod
     def _find_root_entities(cls, database: Database) -> List[str]:
         """Return all root collection names, in declaration order."""
-        from ..unified_meta_schema import Embedded, EntityKind
-
         embedded_targets = set()
         for entity in database.entity_types.values():
             for rel in entity.relationships:
@@ -361,8 +359,6 @@ class MongoDBAdapter(DatabaseAdapter):
     @classmethod
     def _export_entity_to_schema(cls, database: Database, entity: EntityType, is_root: bool = False) -> Dict[str, Any]:
         """Export a single entity to MongoDB JSON Schema format."""
-        from ..unified_meta_schema import Embedded, Cardinality
-
         schema = {
             "bsonType": "object",
             "required": [],

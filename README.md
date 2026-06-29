@@ -74,15 +74,13 @@ print(result['validation_blame'])      # Verdict: ok / smile_script / adapter / 
 ### Run Tests
 ```bash
 python -m pytest tests/ -q
-# 161 tests:
-#   * test_full_flow.py                       — 34 (32 Northwind + 2 grammar-completeness)
-#   * test_parser.py                          — 34 (specific + generalized)
-#   * test_negative.py                        — 28 (graceful-failure surfaces)
-#   * test_nested_paths.py                    — 28 (nested-path resolution)
+# 174 tests across 12 files; the main ones:
+#   * test_full_flow.py                        — 34 (32 Northwind + 2 grammar-completeness)
+#   * test_parser.py                           — 34 (specific + generalized)
+#   * test_negative.py                         — 28 (graceful-failure surfaces)
+#   * test_nested_paths.py                     — 28 (nested-path resolution)
 #   * test_specific_generalized_equivalence.py — 17 (cross-grammar IR equivalence)
-#   * test_relationship_trace.py               — 10 (FK -> edge cardinality trace)
-#   * test_diff_and_invariants.py              — 5  (diff engine + invariants)
-#   * test_schema_invariants.py                — 4  (schema invariants)
+#   * + 33 more (relationship trace, diff/invariants, adapter round-trips, web)
 
 python -m pytest tests/test_full_flow.py -k r2d -q
 # Run only tests matching a keyword

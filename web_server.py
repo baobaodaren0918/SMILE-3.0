@@ -113,249 +113,263 @@ class SMILEHandler(SimpleHTTPRequestHandler):
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             pass  # Browser closed connection early — harmless on Windows
 
+    def _read_body(self) -> bytes:
+        """Read the full request body as bytes (honouring Content-Length)."""
+        content_length = int(self.headers.get('Content-Length', 0))
+        return self.rfile.read(content_length)
+
     def do_POST(self):
+        # Thin dispatcher: each endpoint reads its own body and owns its
+        # try/except -> _send_json contract. The outer guard only swallows the
+        # client-disconnect errors that are common on Windows.
+        routes = {
+            '/api/inspect': self._post_inspect,
+            '/api/run_script': self._post_run_script,
+            '/api/validate_script': self._post_validate_script,
+            '/api/generate_script': self._post_generate_script,
+        }
         try:
-            if self.path == '/api/inspect':
-                content_length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(content_length)
-                content_type = self.headers.get('Content-Type', '')
-
-                try:
-                    if 'multipart/form-data' in content_type:
-                        text, db_type = _parse_multipart_inspect(body, content_type)
-                    else:
-                        data = json.loads(body.decode('utf-8'))
-                        text = data.get('text', '')
-                        db_type = data.get('db_type', '')
-                    result = inspect_schema(text, db_type, input_mode="text")
-
-                    self._send_json(result)
-                except Exception as e:
-                    self._send_json({"error": str(e)})
-            elif self.path == '/api/run_script':
-                content_length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(content_length)
-                try:
-                    data = json.loads(body.decode('utf-8'))
-                    script_text = data.get('script', '')
-                    source_text = data.get('source_text', '')
-                    source_db_type = data.get('source_db_type', '')
-                    target_db_type = data.get('target_db_type', '')
-                    syntax = data.get('syntax', 'specific')
-                    if not script_text:
-                        raise ValueError("script is required")
-                    if not source_text:
-                        raise ValueError("source_text is required (paste/upload a source schema first)")
-                    if not source_db_type:
-                        raise ValueError("source_db_type is required")
-                    if not target_db_type:
-                        raise ValueError("target_db_type is required")
-
-                    src_db = _parse_schema_text(source_text, source_db_type, name='source')
-                    src_count = len(src_db.entity_types)
-                    # Adapters tolerate unrecognised input by returning an empty
-                    # Database rather than raising. Catch that here so the user
-                    # gets a clear "nothing parsed" message instead of a
-                    # confusing all-green run over zero entities.
-                    if src_count == 0:
-                        raise ValueError(
-                            "The source schema parsed to 0 entities. Check that the "
-                            "pasted/uploaded text is valid and matches the selected "
-                            f"source database type ({source_db_type}).")
-
-                    # Reuse the same lex→parse→walk helper as the file-based path
-                    # (parse_smile_auto) so the two never drift.
-                    from parser.factory import parse_smile_text
-                    grammar = 'generalized' if syntax == 'generalized' else 'specific'
-                    _, operations, parse_errors = parse_smile_text(script_text, grammar)
-                    if parse_errors:
-                        # Parse failed: emit ``unverifiable`` placeholders so the
-                        # frontend gets a consistent validation_* shape across endpoints.
-                        skipped = {"passed": None,
-                                   "summary": "Other reasons (parse failed)",
-                                   "details": {}}
-                        skipped_integrity = {"passed": None,
-                                             "summary": "Other reasons (parse failed)",
-                                             "violations": []}
-                        result = {
-                            "ok": False, "errors": parse_errors, "stage": "parse",
-                            "validation_layer0": skipped,
-                            "validation_meta": skipped,
-                            "validation_export": skipped,
-                            "validation_text_diff": skipped,
-                            "validation_integrity": skipped_integrity,
-                            "validation_blame": "unverifiable",
-                            "validation_summary": "SMILE parse failed",
-                        }
-                    else:
-                        # Reuse run_migration()'s apply/export helpers so the canned
-                        # and Run-button paths share one implementation.
-                        from core import SchemaTransformer, run_apply, run_export
-                        # Resolve the target model up front so target-model guards
-                        # apply here too (e.g. NEST is document-only).
-                        tgt_type_resolved = _resolve_db_type(target_db_type)
-                        transformer = SchemaTransformer(src_db, target_type=tgt_type_resolved)
-                        ops_detail, applied, skipped_ct, error_ct = run_apply(transformer, operations)
-                        # Surface deliberate skips and handler errors as separate
-                        # fields; conflating them would hide real defects (a handler
-                        # bug would masquerade as a harmless "skipped" step).
-                        skipped = [f"step {d['step']}: {d['type']}" for d in ops_detail
-                                   if d['status'] == 'skipped']
-                        errors = [f"step {d['step']}: {d['type']} — {d.get('reason', '')}"
-                                  for d in ops_detail if d['status'] == 'error']
-
-                        try:
-                            result_db, exported_text, _ = run_export(
-                                transformer,
-                                _resolve_db_type(source_db_type),
-                                tgt_type_resolved)
-                            if not isinstance(exported_text, str):
-                                # The Document adapter returns a dict → JSON-stringify.
-                                # (Graph now exports a GraphQL SDL string.)
-                                exported_text = json.dumps(exported_text, indent=2, ensure_ascii=False)
-                        except Exception as ex:
-                            result_db = transformer.database
-                            exported_text = f"-- export() raised: {ex}\n"
-
-                        from schema_inspector import _build_summary
-                        meta_v2_summary = _build_summary(result_db)
-
-                        # Run the same validation as /api/migrate for an identical
-                        # response shape. User-pasted scripts have no ground-truth
-                        # target file, so ``unverifiable`` is the legitimate (and
-                        # still useful) verdict, letting the panel render uniformly.
-                        from core import db_to_dict
-                        # Layer 0 needs ``execution_stats`` + ``operations_detail`` to
-                        # derive its verdict; without them it would pass on a zero-op
-                        # assumption, hiding genuine handler errors/skips.
-                        validation_input = {
-                            "result": db_to_dict(result_db),
-                            "exported_target": exported_text,
-                            "execution_stats": {
-                                "total": len(operations),
-                                "success": applied,
-                                "skipped": skipped_ct,
-                                "error": error_ct,
-                            },
-                            "operations_detail": ops_detail,
-                            # Live Database for the Layer-0.5 integrity scan;
-                            # validate_pipeline consumes and drops it before serialization.
-                            "__result_db": result_db,
-                        }
-                        try:
-                            from validation.pipeline import validate_pipeline
-                            v = validate_pipeline(
-                                validation_input, tgt_type_resolved, config_key="")
-                            validation_layer0 = v["layer0"]
-                            validation_meta = v["layer1"]
-                            validation_export = v["layer2"]
-                            validation_text_diff = v["layer3"]
-                            validation_integrity = v["integrity"]
-                            validation_blame = v["blame"]
-                            validation_summary = v["summary"]
-                        except Exception as ex:
-                            err_block = {"passed": None,
-                                         "summary": f"Error: {ex}",
-                                         "details": {}}
-                            err_block_integrity = {"passed": None,
-                                                   "summary": f"Error: {ex}",
-                                                   "violations": []}
-                            validation_layer0 = err_block
-                            validation_meta = err_block
-                            validation_export = err_block
-                            validation_text_diff = err_block
-                            validation_integrity = err_block_integrity
-                            validation_blame = "unverifiable"
-                            validation_summary = f"validation crashed: {ex}"
-
-                        result = {
-                            "ok": True, "stage": "run",
-                            "operations_total": len(operations),
-                            "operations_applied": applied,
-                            "operations_skipped": skipped,
-                            "operations_errors": errors,
-                            "source_entity_count": src_count,
-                            "result_entity_count": len(result_db.entity_types),
-                            "meta_v2_summary": meta_v2_summary,
-                            "exported_target": exported_text,
-                            "target_db_type": tgt_type_resolved.upper(),
-                            "validation_layer0": validation_layer0,
-                            "validation_meta": validation_meta,
-                            "validation_export": validation_export,
-                            "validation_text_diff": validation_text_diff,
-                            "validation_integrity": validation_integrity,
-                            "validation_blame": validation_blame,
-                            "validation_summary": validation_summary,
-                        }
-                    self._send_json(result)
-                except Exception as e:
-                    self._send_json({"ok": False, "error": str(e), "stage": "exception"})
-            elif self.path == '/api/validate_script':
-                content_length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(content_length)
-                try:
-                    data = json.loads(body.decode('utf-8'))
-                    text = data.get('text', '')
-                    syntax = data.get('syntax', 'specific')
-                    errors = _validate_smile_text(text, syntax)
-                    result = {"errors": errors, "ok": len(errors) == 0}
-                    self._send_json(result)
-                except Exception as e:
-                    self._send_json({"error": str(e)})
-            elif self.path == '/api/generate_script':
-                content_length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(content_length)
-                try:
-                    data = json.loads(body.decode('utf-8'))
-                    src_type = data.get('source_db_type', '')
-                    tgt_type = data.get('target_db_type', '')
-                    kind = (data.get('kind') or 'auto').lower()  # 'migration'|'evolution'|'auto'
-                    if not (src_type and tgt_type):
-                        raise ValueError("source_db_type and target_db_type are required")
-
-                    src_token = _smile_db_token(src_type)
-                    tgt_token = _smile_db_token(tgt_type)
-                    if kind == 'auto':
-                        is_evolution = (src_token == tgt_token)
-                    else:
-                        is_evolution = (kind == 'evolution')
-                    migration_name = data.get('migration_name') or 'generated'
-                    schema_name = data.get('schema_name') or 'generated_schema'
-                    version = data.get('version') or '1.0'
-                    schema_version_to = data.get('schema_version_to') or '2.0'
-
-                    from script_renderer import render_header_only
-                    spec_text = render_header_only(
-                        src_token, tgt_token,
-                        kind=('evolution' if is_evolution else 'migration'),
-                        migration_name=migration_name,
-                        schema_name=schema_name, version=version,
-                        schema_version_to=schema_version_to,
-                        syntax='specific')
-                    gen_text = render_header_only(
-                        src_token, tgt_token,
-                        kind=('evolution' if is_evolution else 'migration'),
-                        migration_name=migration_name,
-                        schema_name=schema_name, version=version,
-                        schema_version_to=schema_version_to,
-                        syntax='generalized')
-
-                    result = {
-                        "specific_script": spec_text,
-                        "generalized_script": gen_text,
-                        "is_evolution": is_evolution,
-                        "source_token": src_token,
-                        "target_token": tgt_token,
-                        "kind": "evolution" if is_evolution else "migration",
-                    }
-                    self._send_json(result)
-                except Exception as e:
-                    self._send_json({"error": str(e)})
-            else:
+            handler = routes.get(self.path)
+            if handler is None:
                 self.send_response(404)
                 self.end_headers()
+                return
+            handler()
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             pass
+
+    def _post_inspect(self):
+        body = self._read_body()
+        content_type = self.headers.get('Content-Type', '')
+        try:
+            if 'multipart/form-data' in content_type:
+                text, db_type = _parse_multipart_inspect(body, content_type)
+            else:
+                data = json.loads(body.decode('utf-8'))
+                text = data.get('text', '')
+                db_type = data.get('db_type', '')
+            result = inspect_schema(text, db_type, input_mode="text")
+            self._send_json(result)
+        except Exception as e:
+            self._send_json({"error": str(e)})
+
+    def _post_run_script(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body.decode('utf-8'))
+            script_text = data.get('script', '')
+            source_text = data.get('source_text', '')
+            source_db_type = data.get('source_db_type', '')
+            target_db_type = data.get('target_db_type', '')
+            syntax = data.get('syntax', 'specific')
+            if not script_text:
+                raise ValueError("script is required")
+            if not source_text:
+                raise ValueError("source_text is required (paste/upload a source schema first)")
+            if not source_db_type:
+                raise ValueError("source_db_type is required")
+            if not target_db_type:
+                raise ValueError("target_db_type is required")
+
+            src_db = _parse_schema_text(source_text, source_db_type, name='source')
+            src_count = len(src_db.entity_types)
+            # Adapters tolerate unrecognised input by returning an empty
+            # Database rather than raising. Catch that here so the user
+            # gets a clear "nothing parsed" message instead of a
+            # confusing all-green run over zero entities.
+            if src_count == 0:
+                raise ValueError(
+                    "The source schema parsed to 0 entities. Check that the "
+                    "pasted/uploaded text is valid and matches the selected "
+                    f"source database type ({source_db_type}).")
+
+            # Reuse the same lex→parse→walk helper as the file-based path
+            # (parse_smile_auto) so the two never drift.
+            from parser.factory import parse_smile_text
+            grammar = 'generalized' if syntax == 'generalized' else 'specific'
+            _, operations, parse_errors = parse_smile_text(script_text, grammar)
+            if parse_errors:
+                # Parse failed: emit ``unverifiable`` placeholders so the
+                # frontend gets a consistent validation_* shape across endpoints.
+                skipped = {"passed": None,
+                           "summary": "Other reasons (parse failed)",
+                           "details": {}}
+                skipped_integrity = {"passed": None,
+                                     "summary": "Other reasons (parse failed)",
+                                     "violations": []}
+                result = {
+                    "ok": False, "errors": parse_errors, "stage": "parse",
+                    "validation_layer0": skipped,
+                    "validation_meta": skipped,
+                    "validation_export": skipped,
+                    "validation_text_diff": skipped,
+                    "validation_integrity": skipped_integrity,
+                    "validation_blame": "unverifiable",
+                    "validation_summary": "SMILE parse failed",
+                }
+            else:
+                # Reuse run_migration()'s apply/export helpers so the canned
+                # and Run-button paths share one implementation.
+                from core import SchemaTransformer, run_apply, run_export
+                # Resolve the target model up front so target-model guards
+                # apply here too (e.g. NEST is document-only).
+                tgt_type_resolved = _resolve_db_type(target_db_type)
+                transformer = SchemaTransformer(src_db, target_type=tgt_type_resolved)
+                ops_detail, applied, skipped_ct, error_ct = run_apply(transformer, operations)
+                # Surface deliberate skips and handler errors as separate
+                # fields; conflating them would hide real defects (a handler
+                # bug would masquerade as a harmless "skipped" step).
+                skipped = [f"step {d['step']}: {d['type']}" for d in ops_detail
+                           if d['status'] == 'skipped']
+                errors = [f"step {d['step']}: {d['type']} — {d.get('reason', '')}"
+                          for d in ops_detail if d['status'] == 'error']
+
+                try:
+                    result_db, exported_text, _ = run_export(
+                        transformer,
+                        _resolve_db_type(source_db_type),
+                        tgt_type_resolved)
+                    if not isinstance(exported_text, str):
+                        # The Document adapter returns a dict → JSON-stringify.
+                        # (Graph now exports a GraphQL SDL string.)
+                        exported_text = json.dumps(exported_text, indent=2, ensure_ascii=False)
+                except Exception as ex:
+                    result_db = transformer.database
+                    exported_text = f"-- export() raised: {ex}\n"
+
+                from schema_inspector import _build_summary
+                meta_v2_summary = _build_summary(result_db)
+
+                # Run the same validation as /api/migrate for an identical
+                # response shape. User-pasted scripts have no ground-truth
+                # target file, so ``unverifiable`` is the legitimate (and
+                # still useful) verdict, letting the panel render uniformly.
+                # Layer 0 needs ``execution_stats`` + ``operations_detail`` to
+                # derive its verdict; without them it would pass on a zero-op
+                # assumption, hiding genuine handler errors/skips.
+                validation_input = {
+                    "result": db_to_dict(result_db),
+                    "exported_target": exported_text,
+                    "execution_stats": {
+                        "total": len(operations),
+                        "success": applied,
+                        "skipped": skipped_ct,
+                        "error": error_ct,
+                    },
+                    "operations_detail": ops_detail,
+                    # Live Database for the Layer-0.5 integrity scan;
+                    # validate_pipeline consumes and drops it before serialization.
+                    "__result_db": result_db,
+                }
+                try:
+                    from validation.pipeline import validate_pipeline
+                    v = validate_pipeline(
+                        validation_input, tgt_type_resolved, config_key="")
+                    validation_layer0 = v["layer0"]
+                    validation_meta = v["layer1"]
+                    validation_export = v["layer2"]
+                    validation_text_diff = v["layer3"]
+                    validation_integrity = v["integrity"]
+                    validation_blame = v["blame"]
+                    validation_summary = v["summary"]
+                except Exception as ex:
+                    err_block = {"passed": None,
+                                 "summary": f"Error: {ex}",
+                                 "details": {}}
+                    err_block_integrity = {"passed": None,
+                                           "summary": f"Error: {ex}",
+                                           "violations": []}
+                    validation_layer0 = err_block
+                    validation_meta = err_block
+                    validation_export = err_block
+                    validation_text_diff = err_block
+                    validation_integrity = err_block_integrity
+                    validation_blame = "unverifiable"
+                    validation_summary = f"validation crashed: {ex}"
+
+                result = {
+                    "ok": True, "stage": "run",
+                    "operations_total": len(operations),
+                    "operations_applied": applied,
+                    "operations_skipped": skipped,
+                    "operations_errors": errors,
+                    "source_entity_count": src_count,
+                    "result_entity_count": len(result_db.entity_types),
+                    "meta_v2_summary": meta_v2_summary,
+                    "exported_target": exported_text,
+                    "target_db_type": tgt_type_resolved.upper(),
+                    "validation_layer0": validation_layer0,
+                    "validation_meta": validation_meta,
+                    "validation_export": validation_export,
+                    "validation_text_diff": validation_text_diff,
+                    "validation_integrity": validation_integrity,
+                    "validation_blame": validation_blame,
+                    "validation_summary": validation_summary,
+                }
+            self._send_json(result)
+        except Exception as e:
+            self._send_json({"ok": False, "error": str(e), "stage": "exception"})
+
+    def _post_validate_script(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body.decode('utf-8'))
+            text = data.get('text', '')
+            syntax = data.get('syntax', 'specific')
+            errors = _validate_smile_text(text, syntax)
+            result = {"errors": errors, "ok": len(errors) == 0}
+            self._send_json(result)
+        except Exception as e:
+            self._send_json({"error": str(e)})
+
+    def _post_generate_script(self):
+        body = self._read_body()
+        try:
+            data = json.loads(body.decode('utf-8'))
+            src_type = data.get('source_db_type', '')
+            tgt_type = data.get('target_db_type', '')
+            kind = (data.get('kind') or 'auto').lower()  # 'migration'|'evolution'|'auto'
+            if not (src_type and tgt_type):
+                raise ValueError("source_db_type and target_db_type are required")
+
+            src_token = _smile_db_token(src_type)
+            tgt_token = _smile_db_token(tgt_type)
+            if kind == 'auto':
+                is_evolution = (src_token == tgt_token)
+            else:
+                is_evolution = (kind == 'evolution')
+            migration_name = data.get('migration_name') or 'generated'
+            schema_name = data.get('schema_name') or 'generated_schema'
+            version = data.get('version') or '1.0'
+            schema_version_to = data.get('schema_version_to') or '2.0'
+
+            from script_renderer import render_header_only
+            spec_text = render_header_only(
+                src_token, tgt_token,
+                kind=('evolution' if is_evolution else 'migration'),
+                migration_name=migration_name,
+                schema_name=schema_name, version=version,
+                schema_version_to=schema_version_to,
+                syntax='specific')
+            gen_text = render_header_only(
+                src_token, tgt_token,
+                kind=('evolution' if is_evolution else 'migration'),
+                migration_name=migration_name,
+                schema_name=schema_name, version=version,
+                schema_version_to=schema_version_to,
+                syntax='generalized')
+
+            result = {
+                "specific_script": spec_text,
+                "generalized_script": gen_text,
+                "is_evolution": is_evolution,
+                "source_token": src_token,
+                "target_token": tgt_token,
+                "kind": "evolution" if is_evolution else "migration",
+            }
+            self._send_json(result)
+        except Exception as e:
+            self._send_json({"error": str(e)})
 
     def log_message(self, format, *args):
         pass

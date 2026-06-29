@@ -121,7 +121,7 @@ ADD FOREIGN KEY products.category_id REFERENCES categories(category_id) WITH CAR
 -- Step 7: employees -- REPORTS_TO relationship -> reports_to FK (self-reference)
 -- ============================================
 -- REPORTS_TO (employees -> employees) becomes a reports_to FK column
--- referencing the same employees table (self-reference with ZERO_TO_MANY
+-- referencing the same employees table (self-reference with ZERO_TO_ONE
 -- cardinality since not every employee has a manager).
 DELETE ENTITY REPORTS_TO
 ADD PROPERTY reports_to TO employees WITH TYPE String

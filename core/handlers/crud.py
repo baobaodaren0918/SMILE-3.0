@@ -217,9 +217,8 @@ class CRUDHandlersMixin:
                 c for c in entity.constraints
                 if not (c.kind == "unique" and
                         any(up.property_id == attr_meta_id for up in c.unique_properties))
-                and not (c.kind == "foreign_key" and
-                         any(fkp.property_id == attr_meta_id for fkp in c.foreign_key_properties))
             ]
+            entity.remove_fk_constraint_for_property(attr_meta_id)
         # Clean up Reference relationships matching the deleted property
         for rel in list(entity.relationships):
             if isinstance(rel, Reference) and rel.ref_name == attr_name:
@@ -488,12 +487,12 @@ class CRUDHandlersMixin:
         tgt_entity, tgt_attr_name = self._resolve_entity_attr(target_path)
 
         if src_entity and tgt_entity:
-                src_attr = src_entity.get_property(src_attr_name)
-                if src_attr:
-                    new_attr = Property(tgt_attr_name, src_attr.data_type, False, src_attr.is_optional)
-                    tgt_entity.add_property(new_attr)
-                    src_entity.remove_property(src_attr_name)
-                    self._touch(src_entity.name, tgt_entity.name)
-                    self.changes.append(f"MOVE_PROP:{source_path}->{target_path}")
-                    return OperationResult.ok()
+            src_attr = src_entity.get_property(src_attr_name)
+            if src_attr:
+                new_attr = Property(tgt_attr_name, src_attr.data_type, False, src_attr.is_optional)
+                tgt_entity.add_property(new_attr)
+                src_entity.remove_property(src_attr_name)
+                self._touch(src_entity.name, tgt_entity.name)
+                self.changes.append(f"MOVE_PROP:{source_path}->{target_path}")
+                return OperationResult.ok()
         return OperationResult.skipped("move_property: precondition not met")

@@ -54,11 +54,7 @@ class KeysConstraintsHandlersMixin:
             # (matches SQL semantics: DROP CONSTRAINT removes FK but keeps the column)
             fk_attr = entity.get_property(ref_name)
             if fk_attr:
-                entity.constraints = [
-                    c for c in entity.constraints
-                    if not (c.kind == "foreign_key" and
-                            any(fkp.property_id == fk_attr.meta_id for fkp in c.foreign_key_properties))
-                ]
+                entity.remove_fk_constraint_for_property(fk_attr.meta_id)
             self._touch(entity_name)
             self.changes.append(f"DELETE_FOREIGN_KEY:{entity_name}.{ref_name}")
             return OperationResult.ok()
@@ -265,12 +261,7 @@ class KeysConstraintsHandlersMixin:
         # Drop any FK constraint covering this column — logical-only state.
         fk_attr = entity.get_property(field_name)
         if fk_attr is not None:
-            entity.constraints = [
-                c for c in entity.constraints
-                if not (c.kind == "foreign_key"
-                        and any(fkp.property_id == fk_attr.meta_id
-                                for fkp in c.foreign_key_properties))
-            ]
+            entity.remove_fk_constraint_for_property(fk_attr.meta_id)
 
         self._touch(entity_name)
         self.changes.append(
@@ -570,7 +561,7 @@ class KeysConstraintsHandlersMixin:
             unique_properties=unique_props,
         )
 
-    def _append_to_existing_pk(self, entity, constraint, pk_type_enum):
+    def _append_to_existing_pk(self, entity, constraint, pk_type_enum) -> OperationResult:
         """If the new key is a Cassandra PARTITION/CLUSTERING column and the"""
         if pk_type_enum not in (PKTypeEnum.PARTITION, PKTypeEnum.CLUSTERING):
             return OperationResult.skipped("add_key: precondition not met")
@@ -693,7 +684,7 @@ class KeysConstraintsHandlersMixin:
         # Default to first UniqueProperty
         return target_pk.unique_properties[0].meta_id
 
-    def _remove_key_constraint(self, params: DeleteKeyParams, operation: str = "DELETE") -> bool:
+    def _remove_key_constraint(self, params: DeleteKeyParams, operation: str = "DELETE") -> OperationResult:
         """Helper method for DELETE_KEY operations"""
         entity_name = params.entity
         key_columns = params.key_columns  # List of column names

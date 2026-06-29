@@ -1244,6 +1244,21 @@ class EntityType:
         """Get all foreign key constraints."""
         return [c for c in self.constraints if c.kind == "foreign_key"]
 
+    def remove_fk_constraint_for_property(self, property_meta_id: str) -> None:
+        """Drop any foreign-key constraint that covers the given property.
+
+        Mirrors SQL ``DROP CONSTRAINT`` semantics: the FK constraint is removed
+        while the underlying column/property is left untouched. Centralizes the
+        filter previously duplicated across NEST, DELETE_PROPERTY,
+        DELETE_FOREIGN_KEY and ADD_CONSTRAINT ... AS REFERENCE.
+        """
+        self.constraints = [
+            c for c in self.constraints
+            if not (c.kind == "foreign_key" and
+                    any(fkp.property_id == property_meta_id
+                        for fkp in c.foreign_key_properties))
+        ]
+
     # Property methods
     def add_property(self, attr: Property):
         self.properties.append(attr)

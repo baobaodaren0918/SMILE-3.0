@@ -176,7 +176,7 @@ def run_apply(transformer: 'SchemaTransformer', operations) -> tuple:
                 else:
                     status = "skipped"
                     skipped_count += 1
-                    reason = result.reason if hasattr(result, "reason") else None
+                    reason = result.reason
             except Exception as e:
                 # Bugs in handlers should never be conflated with deliberate
                 # skips. logger.exception() includes the full traceback so the

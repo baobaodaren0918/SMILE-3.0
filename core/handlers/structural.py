@@ -129,11 +129,7 @@ class StructuralHandlersMixin:
                 # Also remove matching ForeignKeyConstraint
                 fk_attr = target_entity.get_property(rel.ref_name)
                 if fk_attr:
-                    target_entity.constraints = [
-                        c for c in target_entity.constraints
-                        if not (c.kind == "foreign_key" and
-                                any(fkp.property_id == fk_attr.meta_id for fkp in c.foreign_key_properties))
-                    ]
+                    target_entity.remove_fk_constraint_for_property(fk_attr.meta_id)
                 target_entity.remove_relationship(rel.ref_name)
                 target_entity.remove_property(rel.ref_name)
                 fk_removed = True

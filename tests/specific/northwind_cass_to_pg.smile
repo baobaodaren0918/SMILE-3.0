@@ -106,7 +106,7 @@ ADD_FOREIGN_KEY order_details.product_id REFERENCES products(product_id) WITH CA
 -- Step 7: Add self-reference FK to employees
 -- ============================================
 -- employees.reports_to references employees(employee_id)
--- ZERO_TO_MANY: an employee may or may not have a manager
+-- ZERO_TO_ONE: an employee may or may not have a manager
 ADD_FOREIGN_KEY employees.reports_to REFERENCES employees(employee_id) WITH CARDINALITY ZERO_TO_ONE
 -- Result:
 -- employees (employee_id [PK], ..., reports_to [FK->employees])
