@@ -43,6 +43,9 @@ paper/
 # Local config — Flask secret_key, web-server config (unrelated to project), runtime logs
 config/
 
+# LLM API key for /api/llm_generate — never commit
+llm_config.py
+
 # Reference PDFs in tests/ — documentation resources, not test inputs
 tests/*.pdf
 

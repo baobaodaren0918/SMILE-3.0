@@ -127,6 +127,7 @@ class SMILEHandler(SimpleHTTPRequestHandler):
             '/api/run_script': self._post_run_script,
             '/api/validate_script': self._post_validate_script,
             '/api/generate_script': self._post_generate_script,
+            '/api/llm_generate': self._post_llm_generate,
         }
         try:
             handler = routes.get(self.path)
@@ -371,6 +372,86 @@ class SMILEHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             self._send_json({"error": str(e)})
 
+    def _post_llm_generate(self):
+        """Generate a SMILE script from a natural-language request via the
+        OpenAI-compatible LLM endpoint configured in llm_config.py."""
+        body = self._read_body()
+        try:
+            data = json.loads(body.decode('utf-8'))
+            prompt = (data.get('prompt') or '').strip()
+            if not prompt:
+                raise ValueError("prompt is required (describe the desired transformation)")
+            src_type = data.get('source_db_type', '')
+            tgt_type = data.get('target_db_type', '')
+            if not (src_type and tgt_type):
+                raise ValueError("source_db_type and target_db_type are required")
+            source_text = data.get('source_text') or ''
+            syntax = 'generalized' if data.get('syntax') == 'generalized' else 'specific'
+            kind = (data.get('kind') or 'auto').lower()
+
+            src_token = _smile_db_token(src_type)
+            tgt_token = _smile_db_token(tgt_type)
+            if kind == 'auto':
+                is_evolution = (src_token == tgt_token)
+            else:
+                is_evolution = (kind == 'evolution')
+
+            from script_renderer import render_header_only
+            header = render_header_only(
+                src_token, tgt_token,
+                kind=('evolution' if is_evolution else 'migration'),
+                migration_name='llm_generated',
+                schema_name='user_schema', version='1.0',
+                schema_version_to='2.0', syntax=syntax)
+
+            if source_text.strip():
+                schema_block = f"Source schema:\n{source_text}\n\n"
+            else:
+                schema_block = ("No source schema was provided. Use exactly the "
+                                "entity and property names given in the request.\n\n")
+            user_prompt = (
+                f"Source database type: {src_token}\n"
+                f"Target database type: {tgt_token}\n"
+                f"Script kind: {'EVOLUTION' if is_evolution else 'MIGRATION'}\n\n"
+                "The script must start with exactly this header (copy it "
+                f"unchanged, then append the operations):\n{header}\n\n"
+                f"{schema_block}"
+                f"Request:\n{prompt}\n")
+            messages = [
+                {"role": "system", "content": _build_llm_system_prompt(syntax)},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            raw, model_used = _call_llm(messages)
+            script = _clean_llm_script(raw)
+            errors = _validate_smile_text(script, syntax)
+            repaired = False
+            if errors:
+                # One repair round: feed the ANTLR errors back to the model.
+                # Keep the repaired script only if it is strictly better.
+                messages.append({"role": "assistant", "content": script})
+                messages.append({"role": "user", "content":
+                                 "The script fails to parse with these errors:\n"
+                                 + "\n".join(errors)
+                                 + "\nReturn the corrected full script only, "
+                                   "no explanations."})
+                raw2, model_used = _call_llm(messages)
+                script2 = _clean_llm_script(raw2)
+                errors2 = _validate_smile_text(script2, syntax)
+                if len(errors2) < len(errors):
+                    script, errors, repaired = script2, errors2, True
+
+            self._send_json({
+                "ok": len(errors) == 0,
+                "script": script,
+                "syntax": syntax,
+                "validation_errors": errors,
+                "repaired": repaired,
+                "model": model_used,
+            })
+        except Exception as e:
+            self._send_json({"error": str(e)})
+
     def log_message(self, format, *args):
         pass
 
@@ -455,6 +536,142 @@ def _validate_smile_text(text: str, syntax: str) -> list:
 def _smile_db_token(db_type: str) -> str:
     """Map adapter db_type strings to the SMILE header token."""
     return _resolve_db_type(db_type).upper()
+
+
+def _call_llm(messages):
+    """Call the OpenAI-compatible endpoint from llm_config.py.
+
+    Returns (reply_text, model_used). The preferred LLM_MODEL is tried first;
+    if the provider rejects it (403 "Model disabled" on models the key's plan
+    does not cover), each LLM_FALLBACK_MODELS entry is tried in order so the
+    feature stays usable and the UI can display which model actually answered.
+    """
+    try:
+        from llm_config import (LLM_API_KEY, LLM_BASE_URL, LLM_MODEL,
+                                LLM_FALLBACK_MODELS)
+    except ImportError:
+        raise RuntimeError(
+            "llm_config.py not found. Create it next to web_server.py with "
+            "LLM_API_KEY, LLM_BASE_URL, LLM_MODEL and LLM_FALLBACK_MODELS "
+            "(it is gitignored).")
+    from openai import OpenAI, PermissionDeniedError, NotFoundError
+    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=180.0)
+    candidates = [LLM_MODEL] + [m for m in LLM_FALLBACK_MODELS if m != LLM_MODEL]
+    last_err = None
+    for model in candidates:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                stream=False,
+            )
+            return response.choices[0].message.content or "", model
+        except (PermissionDeniedError, NotFoundError) as e:
+            last_err = e
+            continue
+    raise RuntimeError(
+        f"All configured models were rejected ({', '.join(candidates)}); "
+        f"last error: {last_err}")
+
+
+def _clean_llm_script(text: str) -> str:
+    """Strip reasoning blocks and markdown fences from an LLM reply.
+
+    Thinking models may emit inline <think> blocks, and chat models often wrap
+    code in ``` fences despite instructions. The parser tolerates neither.
+    """
+    text = re.sub(r'<think>.*?</think>', '', text or '', flags=re.DOTALL)
+    t = text.strip()
+    m = re.match(r'^```[A-Za-z_]*\s*\n(.*?)\n?```\s*$', t, flags=re.DOTALL)
+    if m:
+        t = m.group(1)
+    return t.strip() + '\n'
+
+
+def _build_llm_system_prompt(syntax: str) -> str:
+    """Assemble the /api/llm_generate system prompt from smile_operations.json.
+
+    Deriving the operation reference from the same spec file that drives the
+    editor autocomplete keeps the LLM's grammar knowledge from drifting.
+    """
+    spec_path = Path(__file__).parent / 'grammar' / 'smile_operations.json'
+    spec = json.loads(spec_path.read_text(encoding='utf-8'))
+    key = 'syntax_specific' if syntax == 'specific' else 'syntax_generalized'
+    enum_lines = "\n".join(
+        f"  {name}: {', '.join(values)}"
+        for name, values in spec.get('enums', {}).items())
+    op_lines = "\n".join(
+        f"  {op[key]}\n      ({op.get('doc', '')})"
+        for op in spec.get('operations', {}).values() if op.get(key))
+    grammar_label = ('the specific grammar (.smile, underscore keywords like ADD_PROPERTY)'
+                     if syntax == 'specific' else
+                     'the generalized grammar (.smile_gen, space-separated keywords like ADD PROPERTY)')
+    if syntax == 'specific':
+        example = """MIGRATION example:1.0
+FROM RELATIONAL TO DOCUMENT
+USING northwind VERSION 1.0
+
+-- NEST lists the columns to embed after a colon; the FK columns join the rows
+NEST categories:category_name,description IN products.category WHERE products.category_id = categories.category_id
+DELETE_ENTITY categories
+ADD_PROPERTY discount TO products WITH TYPE Double"""
+    else:
+        example = """MIGRATION example:1.0
+FROM RELATIONAL TO DOCUMENT
+USING northwind VERSION 1.0
+
+-- NEST lists the columns to embed after a colon; the FK columns join the rows
+NEST categories:category_name,description IN products.category WHERE products.category_id = categories.category_id
+DELETE ENTITY categories
+ADD PROPERTY discount TO products WITH TYPE Double"""
+    return f"""You are an expert for SMILE (Schema Migration & Evolution Language), \
+a language for intra-model schema evolution and inter-model schema transformation \
+across relational (PostgreSQL), document (MongoDB), graph (Neo4j) and wide-column \
+(Cassandra) databases. You translate a user's natural-language request into a \
+syntactically valid SMILE script using {grammar_label}.
+
+OPERATION REFERENCE (angle brackets = required, square brackets = optional):
+{op_lines}
+
+ENUM VALUES:
+{enum_lines}
+
+RULES:
+1. Output ONLY the raw SMILE script. No markdown fences, no explanations, no
+   surrounding prose.
+2. Start with the header the user provides, copied exactly, then one operation
+   per line. Optional comments start with -- .
+3. Use only operations from the reference above. Entity and property names must
+   match the source schema exactly (case-sensitive).
+4. Respect the data-model paradigms: ADD_FOREIGN_KEY only makes sense when the
+   target is RELATIONAL. For DOCUMENT targets prefer NEST / embedding
+   operations. For COLUMNAR targets use ADD_PARTITION_KEY / ADD_CLUSTERING_KEY
+   instead of primary keys. For GRAPH targets model relations as edges or
+   logical reference constraints.
+5. Order matters: an operation can only refer to entities and properties that
+   still exist at that point in the script.
+6. Keep the script minimal: exactly the operations needed for the request,
+   nothing speculative.
+7. NEST subtree carry: if the entity being nested already contains embedded
+   sub-objects (from an earlier NEST or UNFLATTEN), you MUST list them in
+   brace syntax with their fields, e.g. address{{street, city}} or
+   product{{product_name, category{{category_name}}}}. A bare sub-object name
+   does NOT carry the subtree and it will be lost.
+8. NEST WHERE orientation: the left side of the WHERE must be the FOREIGN-KEY
+   column, the right side the key it references, regardless of which entity is
+   the nest parent. E.g. both NEST categories:... IN products.category WHERE
+   products.category_id = categories.category_id (FK on the parent) and
+   NEST order_details:... IN orders.details WHERE order_details.order_id =
+   orders.order_id (FK on the nested entity) are correct. Never put the
+   parent's own primary key on the left side, or it gets deleted.
+9. For DOCUMENT targets: declare the surviving root collections up front with
+   CAST_ENTITY <entity> TO DOCUMENT. If a cross-collection reference should
+   remain after DELETE_FOREIGN_KEY, re-declare it explicitly:
+   ADD_CONSTRAINT <entity>.<field> AS REFERENCE TO <target>(<key>)
+   WITH CARDINALITY <cardinalityType>.
+
+EXAMPLE OF A VALID SCRIPT:
+{example}"""
 
 
 def _build_dropdown_options() -> str:

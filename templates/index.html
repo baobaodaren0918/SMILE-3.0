@@ -1272,6 +1272,15 @@
                         <button class="generate-btn" id="genBtn" onclick="runGenerate()">Generate Header</button>
                     </div>
 
+                    <!-- Natural language → SMILE script via the configured LLM -->
+                    <div class="gen-target-bar" style="align-items:flex-start;">
+                        <span class="gen-target-label" style="padding-top:8px;">AI Assist</span>
+                        <textarea class="inspector-textarea" id="llmPrompt"
+                                  style="height:54px; min-height:54px; margin:0; flex:1;"
+                                  placeholder="Describe the transformation in natural language, e.g. 'Embed categories into products, then nest products into order_details and delete both source tables.'"></textarea>
+                        <button class="generate-btn" id="llmGenBtn" onclick="runLlmGenerate()">Generate with AI</button>
+                    </div>
+
                     <div id="composeEditor"></div>
                     <div id="composeStatus" class="compose-status"></div>
                     <!-- Holds the four-layer validation panel (Layer 0 / 1 / 2 / 3

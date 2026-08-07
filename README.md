@@ -39,10 +39,39 @@ python web_server.py
 
 The web interface provides five tabs:
 - **Source Schemas** — inspect any of the 4 native schemas (SQL, JSON, GraphQL SDL, CQL) and the resulting Meta V1
-- **User Transformation** — point at a source DDL, pick a target DB, generate a SMILE header, edit the script in the in-browser Ace editor (autocomplete + syntax highlighting), validate, then run; the resulting Meta V2 and Target Schema panels are rendered read-only
+- **User Transformation** — point at a source DDL, pick a target DB, generate a SMILE header, edit the script in the in-browser Ace editor (autocomplete + syntax highlighting), validate, then run; the resulting Meta V2 and Target Schema panels are rendered read-only. The **AI Assist** bar additionally generates a complete SMILE script from a natural-language description (see below)
 - **Schema Comparison** — side-by-side card view of Meta V1 vs Meta V2 with structural diff highlighting
 - **SMILE Script** — script rendering and syntax-highlighted preview for any registered migration config
 - **Migration / Evolution Process** — full pipeline run (parse → transform → export → validate) with step-by-step operation log and Layer 1 / Layer 2 / Layer 3 validation results
+
+### AI-Assisted Script Generation (LLM)
+
+The web UI embeds an LLM-backed script generator (`/api/llm_generate`): users
+describe the desired transformation in natural language and receive a complete,
+ANTLR-validated SMILE script in the editor — no manual script writing required.
+
+- Works against any **OpenAI-compatible chat-completions API** (e.g. Kimi
+  `kimi-k2-thinking`, Gemini, DeepSeek); model, endpoint and key are configured
+  in a local `llm_config.py` (gitignored — never committed):
+
+```python
+# llm_config.py (create next to web_server.py)
+LLM_API_KEY = "<your api key>"
+LLM_BASE_URL = "https://<your provider>/v1"   # must end with /v1
+LLM_MODEL = "kimi-k2-thinking"                # preferred model
+LLM_FALLBACK_MODELS = ["deepseek-v4-pro"]     # tried if the preferred model is rejected
+```
+
+- The system prompt is assembled from `grammar/smile_operations.json` (the same
+  single source of truth that drives editor autocomplete), plus engine-semantic
+  rules (NEST subtree carry via `child{...}`, WHERE foreign-key orientation,
+  document-root declaration), so the LLM's grammar knowledge cannot drift from
+  the parser.
+- Every generated script is validated with the real ANTLR parser before it
+  reaches the editor; on parse errors, one automatic repair round feeds the
+  errors back to the model. The UI shows which model actually answered.
+- Generated scripts still run through the normal Validate / Run pipeline with
+  all validation layers — the LLM is an authoring aid, not a trusted oracle.
 
 ### CLI
 ```bash
