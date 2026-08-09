@@ -541,37 +541,29 @@ def _smile_db_token(db_type: str) -> str:
 def _call_llm(messages):
     """Call the OpenAI-compatible endpoint from llm_config.py.
 
-    Returns (reply_text, model_used). The preferred LLM_MODEL is tried first;
-    if the provider rejects it (403 "Model disabled" on models the key's plan
-    does not cover), each LLM_FALLBACK_MODELS entry is tried in order so the
-    feature stays usable and the UI can display which model actually answered.
+    Returns (reply_text, model_used). A rejected model is reported as-is rather
+    than silently retried elsewhere: when the key does not cover the configured
+    model, switching models is the user's decision, not the server's.
     """
     try:
-        from llm_config import (LLM_API_KEY, LLM_BASE_URL, LLM_MODEL,
-                                LLM_FALLBACK_MODELS)
+        from llm_config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
     except ImportError:
         raise RuntimeError(
             "llm_config.py not found. Create it next to web_server.py with "
-            "LLM_API_KEY, LLM_BASE_URL, LLM_MODEL and LLM_FALLBACK_MODELS "
-            "(it is gitignored).")
+            "LLM_API_KEY, LLM_BASE_URL and LLM_MODEL (it is gitignored).")
     from openai import OpenAI, PermissionDeniedError, NotFoundError
     client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=180.0)
-    candidates = [LLM_MODEL] + [m for m in LLM_FALLBACK_MODELS if m != LLM_MODEL]
-    last_err = None
-    for model in candidates:
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                stream=False,
-            )
-            return response.choices[0].message.content or "", model
-        except (PermissionDeniedError, NotFoundError) as e:
-            last_err = e
-            continue
-    raise RuntimeError(
-        f"All configured models were rejected ({', '.join(candidates)}); "
-        f"last error: {last_err}")
+    try:
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            stream=False,
+        )
+    except (PermissionDeniedError, NotFoundError) as e:
+        raise RuntimeError(
+            f"The endpoint rejected model '{LLM_MODEL}': {e}. Set LLM_MODEL in "
+            "llm_config.py (or SMILE_LLM_MODEL) to a model your key covers.")
+    return response.choices[0].message.content or "", LLM_MODEL
 
 
 def _clean_llm_script(text: str) -> str:

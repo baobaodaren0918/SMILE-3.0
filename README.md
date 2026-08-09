@@ -50,17 +50,20 @@ The web UI embeds an LLM-backed script generator (`/api/llm_generate`): users
 describe the desired transformation in natural language and receive a complete,
 ANTLR-validated SMILE script in the editor — no manual script writing required.
 
-- Works against any **OpenAI-compatible chat-completions API** (e.g. Kimi
-  `kimi-k2-thinking`, Gemini, DeepSeek); model, endpoint and key are configured
-  in a local `llm_config.py` (gitignored — never committed):
+- Works against any **OpenAI-compatible chat-completions API** (Kimi, Gemini,
+  DeepSeek, …); model, endpoint and key are configured in a local
+  `llm_config.py` (gitignored — never committed):
 
 ```python
 # llm_config.py (create next to web_server.py)
 LLM_API_KEY = "<your api key>"
 LLM_BASE_URL = "https://<your provider>/v1"   # must end with /v1
-LLM_MODEL = "kimi-k2-thinking"                # preferred model
-LLM_FALLBACK_MODELS = ["deepseek-v4-pro"]     # tried if the preferred model is rejected
+LLM_MODEL = "<model id your key covers>"      # e.g. kimi-k2-thinking
 ```
+
+  If the endpoint rejects the configured model, the UI reports it directly so
+  the model can be changed here — there is no silent fallback to a different
+  model.
 
 - The system prompt is assembled from `grammar/smile_operations.json` (the same
   single source of truth that drives editor autocomplete), plus engine-semantic
