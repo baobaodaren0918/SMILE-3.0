@@ -552,7 +552,9 @@ def _call_llm(messages):
             "llm_config.py not found. Create it next to web_server.py with "
             "LLM_API_KEY, LLM_BASE_URL and LLM_MODEL (it is gitignored).")
     from openai import OpenAI, PermissionDeniedError, NotFoundError
-    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=180.0)
+    # Generous timeout: reasoning models answering a full schema prompt
+    # routinely need several minutes before the first byte arrives.
+    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=600.0)
     try:
         response = client.chat.completions.create(
             model=LLM_MODEL,
