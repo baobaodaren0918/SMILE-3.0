@@ -58,12 +58,14 @@ ANTLR-validated SMILE script in the editor — no manual script writing required
 # llm_config.py (create next to web_server.py)
 LLM_API_KEY = "<your api key>"
 LLM_BASE_URL = "https://<your provider>/v1"   # must end with /v1
-LLM_MODEL = "<model id your key covers>"      # e.g. kimi-k2-thinking
+LLM_MODEL = "<model id your key covers>"      # e.g. kimi-k3
 ```
 
   If the endpoint rejects the configured model, the UI reports it directly so
   the model can be changed here — there is no silent fallback to a different
-  model.
+  model. Note that with aggregator endpoints the set of reachable models
+  depends on the plan or token group the key belongs to, not only on what the
+  provider lists.
 
 - The system prompt is assembled from `grammar/smile_operations.json` (the same
   single source of truth that drives editor autocomplete), plus engine-semantic
@@ -75,6 +77,11 @@ LLM_MODEL = "<model id your key covers>"      # e.g. kimi-k2-thinking
   errors back to the model. The UI shows which model actually answered.
 - Generated scripts still run through the normal Validate / Run pipeline with
   all validation layers — the LLM is an authoring aid, not a trusted oracle.
+- Reference result: for the full Northwind relational → document migration
+  (8 tables → 2 collections, nesting depth 3), a natural-language description
+  of the target design yields a 24-operation script that parses, applies
+  without a single skipped or failed operation, and exports a document schema
+  structurally identical to the hand-written reference script.
 
 ### CLI
 ```bash
