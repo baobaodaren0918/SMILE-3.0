@@ -1063,6 +1063,32 @@
         }
         .entity-table td { padding: 10px 12px; border-bottom: 1px solid #E8E8ED; }
         .entity-table tr:hover td { background: #FAFAFA; }
+        /* Meta V1 detail view (User Transformation tab) — the actual meta-model
+           instance behind the summary table: entities, typed properties,
+           constraints and relationships. */
+        .metav1-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+        .metav1-grid .entity-card { margin-bottom: 0; }
+        .metav1-grid .entity-name { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 9px 12px; font-size: 14px; }
+        .metav1-grid .entity-body { padding: 8px 12px; }
+        .metav1-section { margin-top: 8px; }
+        .metav1-section-label {
+            font-size: 10px; font-weight: 700; letter-spacing: .04em;
+            text-transform: uppercase; color: #86868B; margin-bottom: 3px;
+        }
+        .metav1-constraint {
+            padding: 5px 9px; margin: 3px 0; border-radius: 6px; font-size: 12px;
+            background: rgba(175, 82, 222, 0.08); color: #7B1FA2;
+        }
+        .metav1-constraint.fk { background: rgba(0, 102, 204, 0.08); color: #0066CC; }
+        .metav1-constraint.chk { background: rgba(99, 99, 102, 0.10); color: #48484A; }
+        .metav1-pktype {
+            font-size: 9px; font-weight: 600; padding: 1px 4px; border-radius: 3px;
+            background: rgba(255,255,255,0.7); margin-left: 4px;
+        }
+        .metav1-empty { font-size: 12px; color: #AEAEB2; font-style: italic; }
+        .metav1-toolbar { display: flex; align-items: center; gap: 8px; margin: 14px 0 8px; }
+        .metav1-json { max-height: 420px; overflow: auto; background: #F5F5F7; border-radius: 8px; padding: 12px; }
+
         .entity-kind-badge {
             display: inline-block; padding: 2px 8px; border-radius: 4px;
             font-size: 10px; font-weight: 600; text-transform: uppercase;
@@ -1322,6 +1348,6 @@
     <script>
         // INJECT_CONFIG
     </script>
-    <script src="/static/smile-app.js?v=2"></script>
+    <script src="/static/smile-app.js?v=3"></script>
 </body>
 </html>

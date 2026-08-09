@@ -2656,7 +2656,207 @@
                      +  '<td>' + e.constraints + '</td><td>' + e.relationships + '</td></tr>';
             });
             html += '</tbody></table>';
+
+            // The table above only counts things. /api/inspect also returns the
+            // full meta-model instance, so show what Meta V1 actually looks
+            // like: typed properties, constraints and relationships per entity.
+            if (data.meta_schema) {
+                genState.lastMeta = genState.lastMeta || {};
+                genState.lastMeta[side] = data.meta_schema;
+                html += renderMetaDetailBlock('v1_' + side, 'Meta V1 Structure', data.meta_schema);
+            }
             c.innerHTML = html;
+        }
+
+        // Header + card view + JSON toggle for one meta-model instance.
+        function renderMetaDetailBlock(slot, title, meta) {
+            metaDetailCache[slot] = meta;
+            return '<div class="metav1-toolbar">'
+                 + '<div class="inspector-title" style="margin:0;font-size:14px;flex:1;">' + title + '</div>'
+                 + '<button class="compose-btn" onclick="toggleMetaJson(\'' + slot + '\')">Toggle JSON</button>'
+                 + '</div>'
+                 + '<div id="metaCards_' + slot + '">' + renderMetaDetail(meta) + '</div>'
+                 + '<div id="metaJson_' + slot + '" class="metav1-json" style="display:none;"></div>';
+        }
+
+        const metaDetailCache = {};
+
+        function toggleMetaJson(slot) {
+            const cards = document.getElementById('metaCards_' + slot);
+            const json = document.getElementById('metaJson_' + slot);
+            if (!cards || !json) return;
+            const showJson = json.style.display === 'none';
+            if (showJson && !json.innerHTML) {
+                json.innerHTML = syntaxHighlightJSON(JSON.stringify(metaDetailCache[slot], null, 2));
+            }
+            json.style.display = showJson ? 'block' : 'none';
+            cards.style.display = showJson ? 'none' : 'block';
+        }
+
+        // Renders a meta-model instance as entity cards: typed properties with
+        // key/optional flags, constraints with their primary-key subtype, and
+        // the three relationship kinds.
+        //
+        // Two serializations reach this function and both must render: the
+        // nested Database.to_dict() form (/api/inspect, properties carry a
+        // data_type object and constraints reference properties by meta_id)
+        // and the flat db_to_dict() form (/api/run_script, properties carry a
+        // plain type string and relationships are pre-split into references /
+        // embedded / edges). _normalizeMeta folds them into one view model so
+        // the rendering below has a single shape to worry about.
+        function renderMetaDetail(meta) {
+            const entities = _normalizeMeta(meta);
+            if (!entities.length) return '<div class="metav1-empty">No entities parsed.</div>';
+
+            let out = '<div class="metav1-grid">';
+            entities.forEach(e => {
+                out += '<div class="entity-card"><div class="entity-name"><span>' + escapeHtml(e.name) + '</span>'
+                     + '<span class="entity-kind-badge kind-' + escapeHtml(e.kind.replace(/ /g, '_')) + '">'
+                     + escapeHtml(e.kind) + '</span></div><div class="entity-body">';
+
+                e.labels.forEach(l => {
+                    out += '<div class="metav1-constraint">label: ' + escapeHtml(l) + '</div>';
+                });
+
+                e.props.forEach(p => {
+                    out += '<div class="property"><span class="attr-name">' + escapeHtml(p.name) + '</span>'
+                         + '<span class="attr-type">' + p.type + '</span>';
+                    if (p.is_key) out += '<span class="attr-badge pk">key</span>';
+                    if (p.is_optional) out += '<span class="attr-badge optional">?</span>';
+                    if (p.is_auto) out += '<span class="attr-badge ck">auto</span>';
+                    out += '</div>';
+                });
+
+                if (e.constraints.length) {
+                    out += '<div class="metav1-section"><div class="metav1-section-label">Constraints</div>';
+                    e.constraints.forEach(c => {
+                        out += '<div class="metav1-constraint ' + c.cls + '">' + c.text + '</div>';
+                    });
+                    out += '</div>';
+                }
+
+                if (e.rels.length) {
+                    out += '<div class="metav1-section"><div class="metav1-section-label">Relationships</div>';
+                    e.rels.forEach(r => {
+                        out += '<div class="' + r.cls + '">' + r.text + '</div>';
+                    });
+                    out += '</div>';
+                }
+
+                out += '</div></div>';
+            });
+            return out + '</div>';
+        }
+
+        function _normalizeMeta(meta) {
+            if (!meta) return [];
+            const nested = meta.entity_types && typeof meta.entity_types === 'object';
+            const src = nested ? meta.entity_types : meta;
+            const names = Object.keys(src)
+                .filter(k => !k.startsWith('__') && src[k] && typeof src[k] === 'object')
+                .sort();
+
+            const typeLabel = dt => {
+                if (dt == null) return '';
+                if (typeof dt === 'string') return escapeHtml(dt);
+                if (dt.kind === 'list' || dt.kind === 'set') return dt.kind + '&lt;' + typeLabel(dt.element_type) + '&gt;';
+                if (dt.kind === 'map') return 'map&lt;' + typeLabel(dt.key_type) + ',' + typeLabel(dt.value_type) + '&gt;';
+                if (dt.kind === 'tuple') return 'tuple&lt;' + (dt.element_types || []).map(typeLabel).join(',') + '&gt;';
+                let t = escapeHtml(dt.type || dt.kind || '');
+                if (dt.max_length) t += '(' + dt.max_length + ')';
+                else if (dt.precision != null) t += '(' + dt.precision + (dt.scale != null ? ',' + dt.scale : '') + ')';
+                return t;
+            };
+            const card = c => c ? ' [' + escapeHtml(c) + ']' : '';
+
+            // Nested form only: resolve the meta_id indirection in constraints.
+            const propName = {}, uniqueProp = {};
+            if (nested) {
+                names.forEach(n => (src[n].properties || []).forEach(p => {
+                    propName[p.meta_id] = p.name;
+                }));
+                names.forEach(n => (src[n].constraints || []).forEach(ct =>
+                    (ct.unique_properties || []).forEach(up => {
+                        uniqueProp[up.meta_id] = n + '.' + (propName[up.property_id] || '?');
+                    })));
+            }
+
+            return names.map(name => {
+                const e = src[name];
+                const out = {
+                    name: name,
+                    kind: e.entity_kind || '',
+                    labels: e.labels || [],
+                    props: (e.properties || []).map(p => ({
+                        name: p.name,
+                        type: typeLabel(nested ? p.data_type : p.type),
+                        is_key: !!p.is_key,
+                        is_optional: !!p.is_optional,
+                        is_auto: !!p.is_auto_generated,
+                    })),
+                    constraints: [],
+                    rels: [],
+                };
+
+                (e.constraints || []).forEach(ct => {
+                    if (nested) {
+                        if (ct.constraint_type === 'unique') {
+                            const cols = (ct.unique_properties || []).map(up =>
+                                escapeHtml(propName[up.property_id] || up.property_id)
+                                + '<span class="metav1-pktype">' + escapeHtml(up.primary_key_type || '')
+                                + (up.clustering_order ? ' ' + escapeHtml(up.clustering_order) : '')
+                                + '</span>').join(', ');
+                            out.constraints.push({cls: '', text: (ct.is_primary_key ? 'primary key' : 'unique') + ': ' + cols});
+                        } else if (ct.constraint_type === 'foreign_key') {
+                            const cols = (ct.foreign_key_properties || []).map(fp =>
+                                escapeHtml(propName[fp.property_id] || fp.property_id) + ' &rarr; '
+                                + escapeHtml(uniqueProp[fp.points_to_unique_property_id]
+                                             || fp.points_to_unique_property_id || '?')).join(', ');
+                            out.constraints.push({cls: 'fk', text: 'foreign key: ' + cols});
+                        } else {
+                            out.constraints.push({cls: 'chk', text: escapeHtml(ct.constraint_type || 'constraint')});
+                        }
+                    } else {
+                        const kind = (ct.type || '').toLowerCase().replace(/_/g, ' ');
+                        if (ct.type === 'FOREIGN_KEY') {
+                            out.constraints.push({cls: 'fk', text: 'foreign key: ' + escapeHtml(ct.column || '')
+                                + ' &rarr; ' + escapeHtml(ct.references_entity || '')
+                                + '.' + escapeHtml(ct.references_property || '')});
+                        } else {
+                            const cols = (ct.columns || []).map(escapeHtml).join(', ');
+                            out.constraints.push({cls: kind.indexOf('key') >= 0 ? '' : 'chk',
+                                                  text: kind + (cols ? ': ' + cols : '')});
+                        }
+                    }
+                });
+
+                if (nested) {
+                    (e.relationships || []).forEach(r => {
+                        if (r.kind === 'embedded') {
+                            out.rels.push({cls: 'embedded-item', text: '&lt;&gt; ' + escapeHtml(r.aggr_name || '')
+                                + ' &rarr; ' + escapeHtml(r.aggregates || '') + card(r.target_end_cardinality)});
+                        } else if (r.kind === 'edge') {
+                            out.rels.push({cls: 'edge-item', text: '&#x2194; ' + escapeHtml(r.rel_type_name || '')
+                                + ' &rarr; ' + escapeHtml(r.target_entity || '') + card(r.target_end_cardinality)});
+                        } else {
+                            out.rels.push({cls: 'reference-item', text: escapeHtml(r.ref_name || '')
+                                + ' &rarr; ' + escapeHtml(r.refs_to || '') + card(r.target_end_cardinality)
+                                + (r.is_enforced === false ? ' (logical)' : '')});
+                        }
+                    });
+                } else {
+                    (e.references || []).forEach(r => out.rels.push({cls: 'reference-item',
+                        text: escapeHtml(r.name || '') + ' &rarr; ' + escapeHtml(r.target || '')
+                              + card(r.target_end_cardinality)}));
+                    (e.embedded || []).forEach(r => out.rels.push({cls: 'embedded-item',
+                        text: '&lt;&gt; ' + escapeHtml(r.name || '') + ' &rarr; ' + escapeHtml(r.target || '')
+                              + card(r.target_end_cardinality)}));
+                    (e.edges || []).forEach(r => out.rels.push({cls: 'edge-item',
+                        text: '&#x2194; ' + escapeHtml(r.name || '') + ' &rarr; ' + escapeHtml(r.target || '')
+                              + card(r.target_end_cardinality)}));
+                }
+                return out;
+            });
         }
 
         // ---- Generate the SMILE header (user fills in operations themselves) ----
@@ -2808,7 +3008,7 @@
                 }
                 // Render Meta V2 summary (entities, properties, keys, ...) in the M-Model panel
                 if (data.meta_v2_summary) {
-                    _renderMetaV2(data.meta_v2_summary);
+                    _renderMetaV2(data.meta_v2_summary, data.meta_v2);
                 }
                 let msg = '✓  Run successful: ' + data.operations_applied + ' / ' + data.operations_total
                         + ' operations applied. Source: ' + data.source_entity_count + ' entities → '
@@ -2849,7 +3049,7 @@
             }
         }
 
-        function _renderMetaV2(summary) {
+        function _renderMetaV2(summary, meta) {
             const c = document.getElementById('genMetaV2Result');
             if (!summary) { c.innerHTML = ''; return; }
             let html = '<div class="summary-grid" style="margin-bottom:12px;">';
@@ -2868,6 +3068,7 @@
                      +  '<td>' + e.constraints + '</td><td>' + e.relationships + '</td></tr>';
             });
             html += '</tbody></table>';
+            if (meta) html += renderMetaDetailBlock('v2', 'Meta V2 Structure', meta);
             c.innerHTML = html;
         }
 

@@ -297,6 +297,9 @@ class SMILEHandler(SimpleHTTPRequestHandler):
                     "source_entity_count": src_count,
                     "result_entity_count": len(result_db.entity_types),
                     "meta_v2_summary": meta_v2_summary,
+                    # Full Meta V2 instance so the UI can show the structure
+                    # itself, not only the per-entity counts.
+                    "meta_v2": validation_input["result"],
                     "exported_target": exported_text,
                     "target_db_type": tgt_type_resolved.upper(),
                     "validation_layer0": validation_layer0,
